@@ -1,26 +1,52 @@
 @import "tailwindcss";
 
+/* ─── Design Tokens ─────────────────────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg:  #0c0c0e;
+  --bg2: #131316;
+  --bg3: #1a1a1f;
+  --bg4: #222228;
+  --bg5: #2a2a32;
+  --b1:  #1e1e24;
+  --b2:  #2a2a32;
+  --b3:  #363640;
+  --t1:  #ededf0;
+  --t2:  #9898a8;
+  --t3:  #55556a;
+  --ac:  #6c5ce7;
+  --ach: #a29bfe;
+  --acd: rgba(108,92,231,0.15);
+  --teal:  #1db954;
+  --teald: rgba(29,185,84,0.15);
+  --red:   #e05252;
+  --r:  5px;
+  --r2: 8px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* ─── Reset ─────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--t1);
+  -webkit-font-smoothing: antialiased;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* ─── Scrollbar ──────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--b2); border-radius: 3px; }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ─── Animations ─────────────────────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
+.fade-in { animation: fadeIn 0.2s ease; }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.spin-anim { animation: spin 0.7s linear infinite; }
