@@ -1,117 +1,384 @@
 'use client'
 
-import { useState } from 'react'
-import { motion } from 'framer-motion'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { supabase } from '@/lib/supabase'
 import { useAppStore } from '@/store/useAppStore'
 
+type Mode = 'login' | 'signup'
+type Step = 'email' | 'otp'
+
+const ACCENT     = '#6c5ce7'
+const ACCENT_DIM = 'rgba(108,92,231,.45)'
+const BG         = '#0c0c0e'
+const BORDER     = '#2a2a32'
+const T1         = '#ededf0'
+const T2         = '#9898a8'
+const T3         = '#55556a'
+const OTP_LEN    = 8
+const RESEND_CD  = 60  // seconds
+
 export default function AuthPage() {
+  const setUser      = useAppStore((s) => s.setUser)
   const openMusicApp = useAppStore((s) => s.openMusicApp)
-  const [email, setEmail] = useState('usuario@exemplo.com')
-  const [password, setPassword] = useState('12345678')
 
+  const [mode,      setMode]      = useState<Mode>('login')
+  const [step,      setStep]      = useState<Step>('email')
+  const [email,     setEmail]     = useState('')
+  const [otp,       setOtp]       = useState(Array(OTP_LEN).fill(''))
+  const [loading,   setLoading]   = useState(false)
+  const [error,     setError]     = useState('')
+  const [countdown, setCountdown] = useState(0)
+
+  const otpRefs    = useRef<(HTMLInputElement | null)[]>([])
+  const timerRef   = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => { setError('') }, [email, mode])
+
+  // Countdown timer for resend
+  const startCountdown = useCallback(() => {
+    setCountdown(RESEND_CD)
+    if (timerRef.current) clearInterval(timerRef.current)
+    timerRef.current = setInterval(() => {
+      setCountdown((c) => {
+        if (c <= 1) { clearInterval(timerRef.current!); return 0 }
+        return c - 1
+      })
+    }, 1000)
+  }, [])
+
+  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current) }, [])
+
+  // ── Send OTP ──────────────────────────────────────────────────────────────
+  async function sendOtp() {
+    if (!email.trim()) { setError('Enter your email to continue.'); return }
+    setLoading(true); setError('')
+    const { error: err } = await supabase.auth.signInWithOtp({
+      email: email.trim().toLowerCase(),
+      options: { shouldCreateUser: mode === 'signup' },
+    })
+    setLoading(false)
+    if (err) { setError(err.message); return }
+    setStep('otp')
+    setOtp(Array(OTP_LEN).fill(''))
+    startCountdown()
+    setTimeout(() => otpRefs.current[0]?.focus(), 140)
+  }
+
+  // ── Verify OTP ────────────────────────────────────────────────────────────
+  async function verifyWithToken(token: string) {
+    setLoading(true); setError('')
+    const { data, error: err } = await supabase.auth.verifyOtp({
+      email: email.trim().toLowerCase(),
+      token,
+      type: 'email',
+    })
+    setLoading(false)
+    if (err) { setError(err.message); return }
+    const u = data.user
+    if (!u) { setError('Verification failed. Try again.'); return }
+    const name     = u.user_metadata?.full_name || u.email?.split('@')[0] || 'User'
+    const initials = name.slice(0, 2).toUpperCase()
+    setUser({ name, email: u.email ?? '', initials })
+    openMusicApp()
+  }
+
+  async function verifyOtp() {
+    const token = otp.join('')
+    if (token.length < OTP_LEN) { setError(`Enter the ${OTP_LEN}-digit code.`); return }
+    verifyWithToken(token)
+  }
+
+  // ── Resend ────────────────────────────────────────────────────────────────
+  async function resend() {
+    if (countdown > 0) return
+    await supabase.auth.signInWithOtp({
+      email: email.trim().toLowerCase(),
+      options: { shouldCreateUser: mode === 'signup' },
+    })
+    setOtp(Array(OTP_LEN).fill(''))
+    setError('')
+    startCountdown()
+    setTimeout(() => otpRefs.current[0]?.focus(), 80)
+  }
+
+  // ── OTP handlers ──────────────────────────────────────────────────────────
+  function handleOtpChange(i: number, val: string) {
+    const digit = val.replace(/\D/g, '').slice(-1)
+    const next  = [...otp]; next[i] = digit; setOtp(next)
+    if (digit && i < OTP_LEN - 1) otpRefs.current[i + 1]?.focus()
+    if (next.every((d) => d !== '')) verifyWithToken(next.join(''))
+  }
+
+  function handleOtpKey(i: number, e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Backspace' && !otp[i] && i > 0) otpRefs.current[i - 1]?.focus()
+    if (e.key === 'Enter') verifyOtp()
+  }
+
+  function handleOtpPaste(e: React.ClipboardEvent) {
+    const text = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, OTP_LEN)
+    if (!text) return
+    const next = Array(OTP_LEN).fill('')
+    text.split('').forEach((c, i) => { next[i] = c })
+    setOtp(next)
+    otpRefs.current[Math.min(text.length, OTP_LEN - 1)]?.focus()
+    if (text.length === OTP_LEN) verifyWithToken(text)
+  }
+
+  function switchMode(m: Mode) {
+    setMode(m); setStep('email'); setError(''); setOtp(Array(OTP_LEN).fill(''))
+  }
+
+  function goBackToEmail() {
+    setStep('email'); setError('')
+    if (timerRef.current) clearInterval(timerRef.current)
+    setCountdown(0)
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   return (
-    <motion.div
-      className="h-full flex flex-col items-center justify-center"
-      style={{ background: 'var(--bg)' }}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      {/* Logo */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.05 }}
-        style={{ fontFamily: 'var(--font-space-mono, monospace)', fontSize: 24, letterSpacing: -1, marginBottom: 5 }}
-      >
-        VIBE<b style={{ color: 'var(--ach)' }}>STREAM</b>
-      </motion.div>
-      <motion.p
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.1 }}
-        style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 32 }}
-      >
-        Seu espaço pessoal de conteúdo
-      </motion.p>
+    <div style={{
+      height: '100%', display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      background: BG, padding: '24px 24px', overflowY: 'auto',
+    }}>
+      <AnimatePresence mode="wait">
 
-      {/* Card */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.15 }}
-        style={{
-          background: 'var(--bg2)',
-          border: '.5px solid var(--b2)',
-          borderRadius: 'var(--r2)',
-          padding: '26px',
-          width: 320,
-        }}
-      >
-        <h2 style={{ fontSize: 14, fontWeight: 500, marginBottom: 18 }}>Entrar</h2>
+        {/* ── Email step ── */}
+        {step === 'email' && (
+          <motion.div
+            key={`email-${mode}`}
+            initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.22, ease: 'easeOut' }}
+            style={{ width: '100%', maxWidth: 440, display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+          >
+            {/* Back */}
+            <button
+              onClick={() => switchMode(mode === 'login' ? 'login' : 'login')}
+              style={{ alignSelf: 'flex-start', background: 'none', border: 'none', cursor: 'pointer', color: T2, fontSize: 15, display: 'flex', alignItems: 'center', gap: 5, padding: 0, marginBottom: 28, fontWeight: 500 }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" style={{ pointerEvents: 'none' }}><polyline points="15 18 9 12 15 6"/></svg>
+              Back
+            </button>
 
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ display: 'block', fontSize: 10, fontWeight: 500, color: 'var(--t3)', letterSpacing: '.7px', textTransform: 'uppercase', marginBottom: 4 }}>Email</label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={{ width: '100%', background: 'var(--bg3)', border: '.5px solid var(--b2)', borderRadius: 'var(--r)', padding: '8px 11px', color: 'var(--t1)', fontSize: 13, outline: 'none', transition: 'border-color .15s' }}
-            onFocus={(e) => (e.target.style.borderColor = 'var(--ac)')}
-            onBlur={(e) => (e.target.style.borderColor = 'var(--b2)')}
-          />
-        </div>
+            <SunIcon />
 
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ display: 'block', fontSize: 10, fontWeight: 500, color: 'var(--t3)', letterSpacing: '.7px', textTransform: 'uppercase', marginBottom: 4 }}>Senha</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={{ width: '100%', background: 'var(--bg3)', border: '.5px solid var(--b2)', borderRadius: 'var(--r)', padding: '8px 11px', color: 'var(--t1)', fontSize: 13, outline: 'none', transition: 'border-color .15s' }}
-            onFocus={(e) => (e.target.style.borderColor = 'var(--ac)')}
-            onBlur={(e) => (e.target.style.borderColor = 'var(--b2)')}
-            onKeyDown={(e) => e.key === 'Enter' && openMusicApp()}
-          />
-        </div>
+            <h1 style={{ fontSize: 36, fontWeight: 900, color: T1, letterSpacing: '-1.5px', textAlign: 'center', margin: '22px 0 0', lineHeight: 1.12, whiteSpace: 'pre-line' }}>
+              {mode === 'login' ? 'Access your\naccount' : 'Create your\naccount'}
+            </h1>
 
-        <button
-          onClick={openMusicApp}
-          style={{ width: '100%', background: 'var(--ac)', color: '#fff', border: 'none', borderRadius: 'var(--r)', padding: '10px', fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'opacity .15s' }}
-          onMouseEnter={(e) => (e.currentTarget.style.opacity = '.88')}
-          onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
-        >
-          Entrar
-        </button>
+            <p style={{ fontSize: 17, fontWeight: 700, color: T1, marginTop: 18 }}>
+              Get a code by email
+            </p>
+            <p style={{ fontSize: 14, color: T2, marginTop: 6, textAlign: 'center', lineHeight: 1.55 }}>
+              {mode === 'login'
+                ? "We'll send a temporary code to confirm access."
+                : "We'll send a temporary code to confirm your registration."}
+            </p>
 
-        {/* Divider */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '16px 0' }}>
-          <div style={{ flex: 1, height: '.5px', background: 'var(--b2)' }} />
-          <span style={{ fontSize: 11, color: 'var(--t3)' }}>ou</span>
-          <div style={{ flex: 1, height: '.5px', background: 'var(--b2)' }} />
-        </div>
+            <div style={{ width: '100%', marginTop: 32 }}>
+              <label style={{ fontSize: 14, fontWeight: 600, color: T1, display: 'block', marginBottom: 14 }}>
+                Email
+              </label>
+              <input
+                type="email" value={email} autoFocus
+                onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && sendOtp()}
+                placeholder="you@example.com"
+                style={{
+                  width: '100%', background: 'transparent', border: 'none',
+                  borderBottom: `1.5px solid ${error ? '#e05252' : BORDER}`,
+                  outline: 'none', fontSize: 16, color: T1,
+                  padding: '10px 0', boxSizing: 'border-box', transition: 'border-color .15s',
+                }}
+                onFocus={(e) => (e.target.style.borderBottomColor = error ? '#e05252' : ACCENT)}
+                onBlur={(e) => (e.target.style.borderBottomColor = error ? '#e05252' : BORDER)}
+              />
+              <p style={{ fontSize: 12, color: error ? '#e05252' : T3, marginTop: 8, minHeight: 18 }}>
+                {error || 'Enter your email to continue.'}
+              </p>
+            </div>
 
-        <button
-          onClick={openMusicApp}
-          style={{ width: '100%', background: 'var(--bg3)', border: '.5px solid var(--b2)', borderRadius: 'var(--r)', padding: '9px', fontSize: 12, color: 'var(--t2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, transition: 'background .15s' }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg4)')}
-          onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg3)')}
-        >
-          <GoogleIcon />
-          Continuar com Google
-        </button>
-      </motion.div>
-    </motion.div>
+            <button
+              onClick={sendOtp} disabled={loading}
+              style={{
+                width: '100%', marginTop: 20, padding: '16px',
+                background: loading ? ACCENT_DIM : ACCENT,
+                color: '#fff', border: 'none', borderRadius: 14,
+                fontSize: 15, fontWeight: 600,
+                cursor: loading ? 'default' : 'pointer', transition: 'opacity .15s',
+              }}
+              onMouseEnter={(e) => !loading && (e.currentTarget.style.opacity = '.85')}
+              onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+            >
+              {loading ? 'Sending…' : 'Get code'}
+            </button>
+
+            <p style={{ fontSize: 13, color: T2, marginTop: 28 }}>
+              {mode === 'login' ? (
+                <>Don&apos;t have an account?{' '}
+                  <span onClick={() => switchMode('signup')} style={{ color: '#a29bfe', fontWeight: 600, cursor: 'pointer' }}>
+                    Create account
+                  </span>
+                </>
+              ) : (
+                <>Already have an account?{' '}
+                  <span onClick={() => switchMode('login')} style={{ color: '#a29bfe', fontWeight: 600, cursor: 'pointer' }}>
+                    Log in
+                  </span>
+                </>
+              )}
+            </p>
+          </motion.div>
+        )}
+
+        {/* ── OTP step ── */}
+        {step === 'otp' && (
+          <motion.div
+            key="otp"
+            initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.22, ease: 'easeOut' }}
+            style={{ width: '100%', maxWidth: 440, display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+          >
+            {/* Top back */}
+            <button
+              onClick={goBackToEmail}
+              style={{ alignSelf: 'flex-start', background: 'none', border: 'none', cursor: 'pointer', color: T2, fontSize: 15, display: 'flex', alignItems: 'center', gap: 5, padding: 0, marginBottom: 20, fontWeight: 500 }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" style={{ pointerEvents: 'none' }}><polyline points="15 18 9 12 15 6"/></svg>
+              Back
+            </button>
+
+            <MailIcon />
+
+            <h1 style={{ fontSize: 36, fontWeight: 900, color: T1, letterSpacing: '-1.5px', textAlign: 'center', margin: '22px 0 0' }}>
+              Check your email
+            </h1>
+            <p style={{ fontSize: 17, fontWeight: 700, color: T1, marginTop: 14 }}>
+              Enter your verification code
+            </p>
+            <p style={{ fontSize: 14, color: T2, marginTop: 8, textAlign: 'center', lineHeight: 1.55 }}>
+              We sent a {OTP_LEN}-digit code to{' '}
+              <strong style={{ color: T1, fontWeight: 600 }}>{email}</strong>
+            </p>
+
+            {/* OTP underline inputs */}
+            <div style={{ display: 'flex', gap: 10, marginTop: 36, width: '100%', justifyContent: 'center' }} onPaste={handleOtpPaste}>
+              {otp.map((digit, i) => (
+                <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, maxWidth: 52 }}>
+                  <input
+                    ref={(el) => { otpRefs.current[i] = el }}
+                    type="text" inputMode="numeric" maxLength={1} value={digit}
+                    onChange={(e) => handleOtpChange(i, e.target.value)}
+                    onKeyDown={(e) => handleOtpKey(i, e)}
+                    style={{
+                      width: '100%', background: 'transparent', border: 'none', outline: 'none',
+                      fontSize: 24, fontWeight: 700, color: T1,
+                      textAlign: 'center', padding: '4px 0 10px',
+                      caretColor: ACCENT,
+                    }}
+                    onFocus={(e) => {
+                      const bar = e.target.nextSibling as HTMLElement
+                      if (bar) bar.style.background = error ? '#e05252' : ACCENT
+                    }}
+                    onBlur={(e) => {
+                      const bar = e.target.nextSibling as HTMLElement
+                      if (bar) bar.style.background = error ? '#e05252' : digit ? ACCENT : BORDER
+                    }}
+                  />
+                  {/* Underline bar */}
+                  <div style={{
+                    height: 2, width: '100%', borderRadius: 2,
+                    background: error ? '#e05252' : digit ? ACCENT : BORDER,
+                    transition: 'background .15s',
+                  }} />
+                </div>
+              ))}
+            </div>
+
+            {error && (
+              <p style={{ fontSize: 13, color: '#e53e3e', marginTop: 14, textAlign: 'center' }}>{error}</p>
+            )}
+
+            <button
+              onClick={verifyOtp} disabled={loading}
+              style={{
+                width: '100%', marginTop: 32, padding: '14px',
+                background: loading ? ACCENT_DIM : ACCENT,
+                color: '#fff', border: 'none', borderRadius: 14,
+                fontSize: 15, fontWeight: 600,
+                cursor: loading ? 'default' : 'pointer', transition: 'opacity .15s',
+              }}
+              onMouseEnter={(e) => !loading && (e.currentTarget.style.opacity = '.88')}
+              onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+            >
+              {loading ? 'Verifying…' : 'Verify code'}
+            </button>
+
+            {/* Resend with countdown */}
+            <p style={{ fontSize: 13, color: T3, marginTop: 22 }}>
+              Didn&apos;t receive it?{' '}
+              {countdown > 0 ? (
+                <span style={{ color: T3, fontWeight: 500 }}>Resend in {countdown}s</span>
+              ) : (
+                <span onClick={resend} style={{ color: '#a29bfe', fontWeight: 600, cursor: 'pointer' }}>
+                  Resend code
+                </span>
+              )}
+            </p>
+
+            {/* Bottom back link */}
+            <button
+              onClick={goBackToEmail}
+              style={{ marginTop: 16, background: 'none', border: 'none', cursor: 'pointer', color: T3, fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ pointerEvents: 'none' }}><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+              Back
+            </button>
+          </motion.div>
+        )}
+
+      </AnimatePresence>
+    </div>
   )
 }
 
-function GoogleIcon() {
+// ── Icons ─────────────────────────────────────────────────────────────────────
+function SunIcon() {
   return (
-    <svg width="13" height="13" viewBox="0 0 48 48">
-      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.36-8.16 2.36-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-    </svg>
+    <div style={{
+      width: 74, height: 74, borderRadius: 20,
+      background: 'linear-gradient(140deg, #8a7ff0 0%, #6c5ce7 100%)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      boxShadow: '0 10px 36px rgba(90,79,207,.28)',
+    }}>
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.95)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="4"/>
+        <line x1="12" y1="2" x2="12" y2="4"/>
+        <line x1="12" y1="20" x2="12" y2="22"/>
+        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+        <line x1="2" y1="12" x2="4" y2="12"/>
+        <line x1="20" y1="12" x2="22" y2="12"/>
+        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+      </svg>
+    </div>
+  )
+}
+
+function MailIcon() {
+  return (
+    <div style={{
+      width: 74, height: 74, borderRadius: 20,
+      background: 'linear-gradient(140deg, #8a7ff0 0%, #6c5ce7 100%)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      boxShadow: '0 10px 36px rgba(90,79,207,.28)',
+    }}>
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.95)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="4" width="20" height="16" rx="2"/>
+        <polyline points="2,4 12,13 22,4"/>
+      </svg>
+    </div>
   )
 }

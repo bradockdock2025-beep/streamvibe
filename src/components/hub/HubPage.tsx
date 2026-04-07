@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion'
 import { useShallow } from 'zustand/react/shallow'
 import { useAppStore } from '@/store/useAppStore'
+import { supabase } from '@/lib/supabase'
 
 export default function HubPage() {
   const { user, openMusicApp, goAuth } = useAppStore(useShallow((s) => ({
@@ -10,6 +11,11 @@ export default function HubPage() {
     openMusicApp: s.openMusicApp,
     goAuth: s.goAuth,
   })))
+
+  async function handleSignOut() {
+    await supabase.auth.signOut()
+    goAuth()
+  }
 
   return (
     <motion.div
@@ -74,7 +80,7 @@ export default function HubPage() {
         style={{ marginTop: 28 }}
       >
         <button
-          onClick={goAuth}
+          onClick={handleSignOut}
           style={{ background: 'none', border: '.5px solid var(--b2)', borderRadius: 'var(--r)', padding: '6px 14px', fontSize: 12, color: 'var(--t3)', cursor: 'pointer', transition: 'all .15s' }}
           onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--red)'; e.currentTarget.style.color = 'var(--red)' }}
           onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--b2)'; e.currentTarget.style.color = 'var(--t3)' }}

@@ -182,6 +182,7 @@ interface AppState {
   uploadFiles: UploadFile[]
 
   // ── Actions — Navigation ────────────────────────────────────────────────────
+  setUser:      (u: User) => void
   goAuth:       () => void
   goHub:        () => void
   openMusicApp: () => void
@@ -261,16 +262,20 @@ export const useAppStore = create<AppState>((set, get) => {
 
   const applyDeleteSummary = (summary: MusicDeleteSummary) => {
     const { albums, artists, mpCurrentAlbumId, mpCurrentArtistName, mpCurrentTrackId, mpLiked } = get()
-    const deletedTrackIds = new Set(summary.deletedTrackIds)
-    const deletedAlbumIds = new Set(summary.deletedAlbumIds)
+    const deletedTrackIds  = new Set(summary.deletedTrackIds)
+    const deletedAlbumIds  = new Set(summary.deletedAlbumIds)
     const deletedArtistIds = new Set(summary.deletedArtistIds)
 
-    const currentAlbum = albums.find((album) => album.id === mpCurrentAlbumId) ?? null
-    const currentArtist = artists.find((artist) => artist.name === mpCurrentArtistName) ?? null
+    // Derive the playing album from the current track (not from navigation state)
+    const playingAlbum  = albums.find((a) => a.tracks.some((t) => t.id === mpCurrentTrackId)) ?? null
+    // Navigation-selected album/artist (for view reset)
+    const navAlbum      = albums.find((a) => a.id === mpCurrentAlbumId) ?? null
+    const currentArtist = artists.find((a) => a.name === mpCurrentArtistName) ?? null
+
     const shouldStopPlayback =
       (mpCurrentTrackId ? deletedTrackIds.has(mpCurrentTrackId) : false) ||
-      (mpCurrentAlbumId ? deletedAlbumIds.has(mpCurrentAlbumId) : false) ||
-      (currentAlbum ? deletedArtistIds.has(currentAlbum.artistId) : false)
+      (playingAlbum ? deletedAlbumIds.has(playingAlbum.id) : false) ||
+      (playingAlbum ? deletedArtistIds.has(playingAlbum.artistId) : false)
 
     const nextState: Partial<AppState> = {
       mpLiked: mpLiked.filter((id) => !deletedTrackIds.has(id)),
@@ -281,16 +286,17 @@ export const useAppStore = create<AppState>((set, get) => {
       audioManager.stop()
     }
 
+    // Reset navigation view if the viewed album/artist was deleted
     if (
       (mpCurrentAlbumId ? deletedAlbumIds.has(mpCurrentAlbumId) : false) ||
-      (currentAlbum ? deletedArtistIds.has(currentAlbum.artistId) : false)
+      (navAlbum ? deletedArtistIds.has(navAlbum.artistId) : false)
     ) {
       nextState.mpCurrentAlbumId = null
     }
 
     if (
       (currentArtist ? deletedArtistIds.has(currentArtist.id) : false) ||
-      (currentAlbum ? deletedArtistIds.has(currentAlbum.artistId) : false)
+      (navAlbum ? deletedArtistIds.has(navAlbum.artistId) : false)
     ) {
       nextState.mpCurrentArtistName = null
     }
@@ -362,7 +368,6 @@ export const useAppStore = create<AppState>((set, get) => {
     const { album, albumTrackIdx, track } = resolved
 
     set({
-      mpCurrentAlbumId: album.id,
       mpTrackIdx: albumTrackIdx,
       mpQueue: queue,
       mpQueueIdx: queueIdx,
@@ -451,6 +456,7 @@ export const useAppStore = create<AppState>((set, get) => {
   uploadFiles:         [],
 
   // ── Navigation ──
+  setUser: (u) => set({ user: u }),
   goAuth: () => set({ page: 'auth' }),
   goHub:  () => set({ page: 'hub' }),
 
