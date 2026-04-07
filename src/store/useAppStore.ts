@@ -1,8 +1,7 @@
 import { create } from 'zustand'
-import type { AppPage, AppModule, MpView, VkFolder, VkLink, Album, Track, Artist, Playlist, UploadFile } from '@/types'
+import type { AppPage, MpView, Album, Track, Artist, Playlist, UploadFile } from '@/types'
 import type { ApiAlbum, ApiArtist, ApiTrack, ApiPlaylist } from '@/types'
-import { INITIAL_VK_FOLDERS, INITIAL_VK_LINKS } from '@/lib/data'
-import { adminHeaders, ytId, uid } from '@/lib/utils'
+import { adminHeaders, uid } from '@/lib/utils'
 import { audioManager } from '@/lib/audioManager'
 
 // ─── Adapters: API shape → store shape ───────────────────────────────────────
@@ -137,31 +136,15 @@ interface User { name: string; email: string; initials: string }
 // ─── State interface ──────────────────────────────────────────────────────────
 interface AppState {
   // Navigation
-  page:   AppPage
-  module: AppModule
-  user:   User
-
-  // Sidebar
-  sidebarCollapsed: boolean
+  page: AppPage
+  user: User
 
   // Toast
   toastMsg:     string
   toastVisible: boolean
 
-  // VidKeep
-  vkFolder:  string
-  vkSearch:  string
-  vkFolders: VkFolder[]
-  vkLinks:   VkLink[]
-
   // Modals
-  addModalOpen:      boolean
-  addModalEditId:    string | null
-  addModalAutoTitle: string
-  newFolderModalOpen: boolean
-  videoModalOpen:    boolean
-  videoModalLink:    VkLink | null
-  uploadModalOpen:   boolean
+  uploadModalOpen: boolean
 
   // Music — library
   mpView:               MpView
@@ -199,34 +182,16 @@ interface AppState {
   uploadFiles: UploadFile[]
 
   // ── Actions — Navigation ────────────────────────────────────────────────────
-  goAuth:        () => void
-  goHub:         () => void
-  openModule:    (m: AppModule) => void
-  switchModule:  (m: AppModule) => void
-  toggleSidebar: () => void
+  goAuth:       () => void
+  goHub:        () => void
+  openMusicApp: () => void
 
   // ── Actions — Toast ─────────────────────────────────────────────────────────
   showToast: (msg: string) => void
 
-  // ── Actions — VidKeep ───────────────────────────────────────────────────────
-  vkSelect:    (id: string) => void
-  vkSetSearch: (q: string) => void
-  vkAddLink:   (url: string, fid: string | null, customTitle: string, autoTitle: string) => void
-  vkEditLink:  (id: string, url: string, fid: string | null, title: string) => void
-  vkDeleteLink:(id: string) => void
-  vkAddFolder: (name: string) => void
-
   // ── Actions — Modals ────────────────────────────────────────────────────────
-  openAddModal:        () => void
-  openEditModal:       (id: string) => void
-  closeAddModal:       () => void
-  setAddModalAutoTitle:(t: string) => void
-  openNewFolderModal:  () => void
-  closeNewFolderModal: () => void
-  openVideoModal:      (linkId: string) => void
-  closeVideoModal:     () => void
-  openUploadModal:     () => void
-  closeUploadModal:    () => void
+  openUploadModal:  () => void
+  closeUploadModal: () => void
 
   // ── Actions — Music data ────────────────────────────────────────────────────
   fetchAlbums:    () => Promise<void>
@@ -449,24 +414,10 @@ export const useAppStore = create<AppState>((set, get) => {
   return {
   // ── App ──
   page:             'auth',
-  module:           'vk',
   user:             { name: 'Usuário', email: 'usuario@exemplo.com', initials: 'US' },
-  sidebarCollapsed: false,
   toastMsg:         '',
   toastVisible:     false,
-
-  // ── VidKeep ──
-  vkFolder:          'all',
-  vkSearch:          '',
-  vkFolders:         INITIAL_VK_FOLDERS,
-  vkLinks:           INITIAL_VK_LINKS,
-  addModalOpen:      false,
-  addModalEditId:    null,
-  addModalAutoTitle: '',
-  newFolderModalOpen:false,
-  videoModalOpen:    false,
-  videoModalLink:    null,
-  uploadModalOpen:   false,
+  uploadModalOpen:  false,
 
   // ── Music ──
   mpView:              'library',
@@ -503,31 +454,12 @@ export const useAppStore = create<AppState>((set, get) => {
   goAuth: () => set({ page: 'auth' }),
   goHub:  () => set({ page: 'hub' }),
 
-  openModule: (m) => {
-    set({ page: 'app', module: m })
-    if (m === 'vk') {
-      set({ vkFolder: 'all', vkSearch: '' })
-    } else {
-      set({ mpView: 'library', mpCurrentAlbumId: null, mpCurrentArtistName: null, mpCurrentPlaylistId: null })
-      if (!get().albums.length)    get().fetchAlbums()
-      if (!get().artists.length)   get().fetchArtists()
-      if (!get().playlists.length) get().fetchPlaylists()
-    }
+  openMusicApp: () => {
+    set({ page: 'app', mpView: 'library', mpCurrentAlbumId: null, mpCurrentArtistName: null, mpCurrentPlaylistId: null })
+    if (!get().albums.length)    get().fetchAlbums()
+    if (!get().artists.length)   get().fetchArtists()
+    if (!get().playlists.length) get().fetchPlaylists()
   },
-
-  switchModule: (m) => {
-    set({ module: m })
-    if (m === 'vk') {
-      set({ vkFolder: 'all', vkSearch: '' })
-    } else {
-      set({ mpView: 'library', mpCurrentAlbumId: null, mpCurrentArtistName: null, mpCurrentPlaylistId: null })
-      if (!get().albums.length)    get().fetchAlbums()
-      if (!get().artists.length)   get().fetchArtists()
-      if (!get().playlists.length) get().fetchPlaylists()
-    }
-  },
-
-  toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
 
   // ── Toast ──
   showToast: (msg) => {
@@ -535,52 +467,7 @@ export const useAppStore = create<AppState>((set, get) => {
     setTimeout(() => set({ toastVisible: false }), 2200)
   },
 
-  // ── VidKeep ──
-  vkSelect:    (id) => set({ vkFolder: id, vkSearch: '' }),
-  vkSetSearch: (q)  => set({ vkSearch: q }),
-
-  vkAddLink: (url, fid, customTitle, autoTitle) => {
-    const vid   = ytId(url)
-    const title = customTitle || autoTitle || (vid ? 'Vídeo YouTube' : 'Link')
-    const thumb = vid ? `https://img.youtube.com/vi/${vid}/mqdefault.jpg` : ''
-    const link: VkLink = { id: `l${uid()}`, fid, url, title, thumb, type: vid ? 'yt' : 'other', vid: vid || null }
-    set((s) => ({ vkLinks: [link, ...s.vkLinks] }))
-    get().showToast('Link salvo!')
-  },
-
-  vkEditLink: (id, url, fid, title) => {
-    const vid   = ytId(url)
-    const thumb = vid ? `https://img.youtube.com/vi/${vid}/mqdefault.jpg` : ''
-    set((s) => ({
-      vkLinks: s.vkLinks.map((l) =>
-        l.id === id ? { ...l, url, fid, title, thumb, type: vid ? 'yt' : 'other', vid: vid || null } : l
-      ),
-    }))
-    get().showToast('Link atualizado!')
-  },
-
-  vkDeleteLink: (id) => {
-    set((s) => ({ vkLinks: s.vkLinks.filter((l) => l.id !== id) }))
-    get().showToast('Removido')
-  },
-
-  vkAddFolder: (name) => {
-    set((s) => ({ vkFolders: [...s.vkFolders, { id: `f${uid()}`, name }] }))
-    get().showToast(`Pasta "${name}" criada!`)
-  },
-
   // ── Modals ──
-  openAddModal:         () => set({ addModalOpen: true, addModalEditId: null, addModalAutoTitle: '' }),
-  openEditModal:        (id) => set({ addModalOpen: true, addModalEditId: id, addModalAutoTitle: '' }),
-  closeAddModal:        () => set({ addModalOpen: false, addModalEditId: null }),
-  setAddModalAutoTitle: (t) => set({ addModalAutoTitle: t }),
-  openNewFolderModal:   () => set({ newFolderModalOpen: true }),
-  closeNewFolderModal:  () => set({ newFolderModalOpen: false }),
-  openVideoModal: (linkId) => {
-    const link = get().vkLinks.find((l) => l.id === linkId) || null
-    set({ videoModalOpen: true, videoModalLink: link })
-  },
-  closeVideoModal:  () => set({ videoModalOpen: false, videoModalLink: null }),
   openUploadModal:  () => set({ uploadModalOpen: true, uploadFiles: [] }),
   closeUploadModal: () => set({ uploadModalOpen: false }),
 

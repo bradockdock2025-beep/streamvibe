@@ -3,12 +3,11 @@
 import { motion } from 'framer-motion'
 import { useShallow } from 'zustand/react/shallow'
 import { useAppStore } from '@/store/useAppStore'
-import type { AppModule } from '@/types'
 
 export default function HubPage() {
-  const { user, openModule, goAuth } = useAppStore(useShallow((s) => ({
+  const { user, openMusicApp, goAuth } = useAppStore(useShallow((s) => ({
     user: s.user,
-    openModule: s.openModule,
+    openMusicApp: s.openMusicApp,
     goAuth: s.goAuth,
   })))
 
@@ -27,7 +26,7 @@ export default function HubPage() {
         transition={{ delay: 0.05 }}
         style={{ fontFamily: 'var(--font-space-mono, monospace)', fontSize: 22, letterSpacing: -1, marginBottom: 6 }}
       >
-        Hub<b style={{ color: 'var(--ach)' }}>App</b>
+        VIBE<b style={{ color: 'var(--ach)' }}>STREAM</b>
       </motion.div>
       <motion.p
         initial={{ opacity: 0 }}
@@ -35,7 +34,7 @@ export default function HubPage() {
         transition={{ delay: 0.1 }}
         style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 28 }}
       >
-        Escolha um módulo para começar
+        Abra o módulo de música
       </motion.p>
 
       {/* User row */}
@@ -56,24 +55,14 @@ export default function HubPage() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.15 }}
-        style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, width: '100%', maxWidth: 480 }}
+        style={{ width: '100%', maxWidth: 320 }}
       >
         <HubCard
-          module="vk"
-          title="VidKeep"
-          description="Salva e organiza links de vídeo em pastas com playback integrado"
-          icon={<VidKeepIcon />}
-          accentClass="vk"
-          onClick={() => openModule('vk')}
-        />
-        <HubCard
-          module="mp"
           title="Music Player"
           description="Faz upload de músicas e álbuns, organiza a tua biblioteca pessoal"
           icon={<MusicIcon />}
           badge="Novo"
-          accentClass="mp"
-          onClick={() => openModule('mp')}
+          onClick={openMusicApp}
         />
       </motion.div>
 
@@ -99,23 +88,17 @@ export default function HubPage() {
 
 // ─── Hub Card ────────────────────────────────────────────────────────────────
 interface HubCardProps {
-  module: AppModule
   title: string
   description: string
   icon: React.ReactNode
   badge?: string
-  accentClass: 'vk' | 'mp'
   onClick: () => void
 }
 
-function HubCard({ title, description, icon, badge, accentClass, onClick }: HubCardProps) {
-  const isVk = accentClass === 'vk'
-  const accentColor = isVk ? 'var(--ac)' : 'var(--teal)'
-  const accentBg = isVk ? 'var(--acd)' : 'var(--teald)'
-
+function HubCard({ title, description, icon, badge, onClick }: HubCardProps) {
   return (
     <motion.div
-      whileHover={{ y: -2, borderColor: accentColor }}
+      whileHover={{ y: -2, borderColor: 'var(--teal)' }}
       onClick={onClick}
       style={{
         background: 'var(--bg2)',
@@ -129,8 +112,8 @@ function HubCard({ title, description, icon, badge, accentClass, onClick }: HubC
       }}
     >
       {/* Icon */}
-      <div style={{ width: 40, height: 40, borderRadius: 8, background: accentBg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
-        <div style={{ color: accentColor }}>{icon}</div>
+      <div style={{ width: 40, height: 40, borderRadius: 8, background: 'var(--teald)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+        <div style={{ color: 'var(--teal)' }}>{icon}</div>
       </div>
 
       {/* Badge */}
@@ -143,15 +126,6 @@ function HubCard({ title, description, icon, badge, accentClass, onClick }: HubC
       <h3 style={{ fontSize: 14, fontWeight: 500, marginBottom: 5 }}>{title}</h3>
       <p style={{ fontSize: 11, color: 'var(--t3)', lineHeight: 1.5 }}>{description}</p>
     </motion.div>
-  )
-}
-
-function VidKeepIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M15 10l-4 4 4 4"/><path d="M2 12h14"/>
-      <rect x="14" y="4" width="8" height="16" rx="1"/>
-    </svg>
   )
 }
 

@@ -1,8 +1,3 @@
-export function ytId(url: string): string | null {
-  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s?#]+)/)
-  return m ? m[1] : null
-}
-
 export function parseDur(s: string): number {
   const [m, sec] = s.split(':').map(Number)
   return m * 60 + sec

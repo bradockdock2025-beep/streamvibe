@@ -5,22 +5,6 @@ export interface User {
   initials: string
 }
 
-// ─── VidKeep ─────────────────────────────────────────────────────────────────
-export interface VkFolder {
-  id:   string
-  name: string
-}
-
-export interface VkLink {
-  id:    string
-  fid:   string | null
-  url:   string
-  title: string
-  thumb: string
-  type:  'yt' | 'other'
-  vid:   string | null
-}
-
 // ─── Music ───────────────────────────────────────────────────────────────────
 export interface Track {
   id:          string
@@ -86,7 +70,6 @@ export interface UploadFile {
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 export type AppPage   = 'auth' | 'hub' | 'app'
-export type AppModule = 'vk' | 'mp'
 export type MpView    = 'library' | 'playlists' | 'artists' | 'songs' | 'popular' | 'radio' | 'upload'
 
 // ─── API response shapes ──────────────────────────────────────────────────────

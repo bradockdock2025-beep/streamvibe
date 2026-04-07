@@ -1,5 +1,5 @@
-import HubApp from '@/components/HubApp'
+import ClientHubApp from '@/components/ClientHubApp'
 
 export default function Home() {
-  return <HubApp />
+  return <ClientHubApp />
 }

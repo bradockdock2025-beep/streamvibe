@@ -17,7 +17,7 @@ const spaceMono = Space_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'HubApp — Seu espaço pessoal de conteúdo',
+  title: 'VIBESTREAM — Seu espaço pessoal de conteúdo',
   description: 'Organize vídeos e músicas num único lugar.',
 }
 

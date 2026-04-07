@@ -5,7 +5,7 @@ import { motion } from 'framer-motion'
 import { useAppStore } from '@/store/useAppStore'
 
 export default function AuthPage() {
-  const goHub = useAppStore((s) => s.goHub)
+  const openMusicApp = useAppStore((s) => s.openMusicApp)
   const [email, setEmail] = useState('usuario@exemplo.com')
   const [password, setPassword] = useState('12345678')
 
@@ -24,7 +24,7 @@ export default function AuthPage() {
         transition={{ delay: 0.05 }}
         style={{ fontFamily: 'var(--font-space-mono, monospace)', fontSize: 24, letterSpacing: -1, marginBottom: 5 }}
       >
-        Hub<b style={{ color: 'var(--ach)' }}>App</b>
+        VIBE<b style={{ color: 'var(--ach)' }}>STREAM</b>
       </motion.div>
       <motion.p
         initial={{ opacity: 0 }}
@@ -71,12 +71,12 @@ export default function AuthPage() {
             style={{ width: '100%', background: 'var(--bg3)', border: '.5px solid var(--b2)', borderRadius: 'var(--r)', padding: '8px 11px', color: 'var(--t1)', fontSize: 13, outline: 'none', transition: 'border-color .15s' }}
             onFocus={(e) => (e.target.style.borderColor = 'var(--ac)')}
             onBlur={(e) => (e.target.style.borderColor = 'var(--b2)')}
-            onKeyDown={(e) => e.key === 'Enter' && goHub()}
+            onKeyDown={(e) => e.key === 'Enter' && openMusicApp()}
           />
         </div>
 
         <button
-          onClick={goHub}
+          onClick={openMusicApp}
           style={{ width: '100%', background: 'var(--ac)', color: '#fff', border: 'none', borderRadius: 'var(--r)', padding: '10px', fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'opacity .15s' }}
           onMouseEnter={(e) => (e.currentTarget.style.opacity = '.88')}
           onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
@@ -92,7 +92,7 @@ export default function AuthPage() {
         </div>
 
         <button
-          onClick={goHub}
+          onClick={openMusicApp}
           style={{ width: '100%', background: 'var(--bg3)', border: '.5px solid var(--b2)', borderRadius: 'var(--r)', padding: '9px', fontSize: 12, color: 'var(--t2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, transition: 'background .15s' }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg4)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg3)')}
