@@ -50,3 +50,8 @@ html, body {
   to { transform: rotate(360deg); }
 }
 .spin-anim { animation: spin 0.7s linear infinite; }
+
+@keyframes soundBar {
+  0%, 100% { transform: scaleY(0.3); }
+  50%       { transform: scaleY(1);   }
+}

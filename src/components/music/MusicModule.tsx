@@ -536,11 +536,9 @@ function SongsView({
               onMouseLeave={(e) => !isPlaying && (e.currentTarget.style.background = 'transparent')}
             >
               {/* Index / playing */}
-              <span style={{ fontSize: 12, color: isPlaying ? '#1db954' : 'rgba(255,255,255,.3)', textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>
-                {isPlaying
-                  ? <svg width="11" height="11" viewBox="0 0 24 24" fill="#1db954"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                  : i + 1}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {isPlaying ? <SoundWave /> : <span style={{ fontSize: 12, color: 'rgba(255,255,255,.3)', fontVariantNumeric: 'tabular-nums' }}>{i + 1}</span>}
+              </div>
 
               {/* Title + Artist */}
               <div style={{ minWidth: 0 }}>
@@ -831,11 +829,9 @@ function AlbumTrackRow({ track, index, album, liked, onLike, onAddToPlaylist, on
       onMouseEnter={(e) => !isPlaying && (e.currentTarget.style.background = 'rgba(255,255,255,.04)')}
       onMouseLeave={(e) => !isPlaying && (e.currentTarget.style.background = 'transparent')}
     >
-      <span style={{ fontSize: 13, color: isPlaying ? '#1db954' : 'rgba(255,255,255,.3)', textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>
-        {isPlaying
-          ? <svg width="11" height="11" viewBox="0 0 24 24" fill="#1db954"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          : index + 1}
-      </span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {isPlaying ? <SoundWave /> : <span style={{ fontSize: 13, color: 'rgba(255,255,255,.3)', fontVariantNumeric: 'tabular-nums' }}>{index + 1}</span>}
+      </div>
       <div>
         <div style={{ fontSize: 13, fontWeight: 500, color: isPlaying ? '#1db954' : '#fff' }}>{track.name}</div>
         <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', marginTop: 1 }}>{album.artist}</div>
@@ -1112,6 +1108,28 @@ function ArtistDetailView({
 }
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
+// ─── Animated sound wave indicator ───────────────────────────────────────────
+function SoundWave() {
+  const bars = [
+    { delay: '0s',    height: 12 },
+    { delay: '0.2s',  height: 16 },
+    { delay: '0.1s',  height: 10 },
+  ]
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 16 }}>
+      {bars.map((b, i) => (
+        <div key={i} style={{
+          width: 3, height: b.height, borderRadius: 2,
+          background: '#1db954',
+          animation: `soundBar 0.9s ease-in-out infinite`,
+          animationDelay: b.delay,
+          transformOrigin: 'bottom',
+        }} />
+      ))}
+    </div>
+  )
+}
+
 function SectionHeader({ title }: { title: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>

@@ -45,7 +45,7 @@ export default function FullscreenPlayer() {
     mpCurrentArtist, mpCurrentCover,
     mpCurrentDur, mpProgress, mpSetProgress,
     mpShuffling, mpRepeating, mpToggleShuffle, mpToggleRepeat,
-    mpLiked, mpToggleLike,
+    mpVolume, mpSetVolume,
     mpQueue, mpQueueIdx, albums, artists,
   } = useAppStore(useShallow((s) => ({
     mpFullscreen:       s.mpFullscreen,
@@ -65,8 +65,8 @@ export default function FullscreenPlayer() {
     mpRepeating:        s.mpRepeating,
     mpToggleShuffle:    s.mpToggleShuffle,
     mpToggleRepeat:     s.mpToggleRepeat,
-    mpLiked:            s.mpLiked,
-    mpToggleLike:       s.mpToggleLike,
+    mpVolume:           s.mpVolume,
+    mpSetVolume:        s.mpSetVolume,
     mpQueue:            s.mpQueue,
     mpQueueIdx:         s.mpQueueIdx,
     albums:             s.albums,
@@ -77,6 +77,7 @@ export default function FullscreenPlayer() {
   const prevIdxRef                = useRef(mpQueueIdx)
   const [direction, setDirection] = useState(0)
   const [pulse,     setPulse]     = useState(0)
+  const [volOpen,   setVolOpen]   = useState(false)
 
   useEffect(() => {
     const diff = mpQueueIdx - prevIdxRef.current
@@ -114,7 +115,6 @@ export default function FullscreenPlayer() {
   // ── Derived values ────────────────────────────────────────────────────────
   const tot     = parseDur(mpCurrentDur || '0:00')
   const cur     = Math.round((mpProgress / 100) * tot)
-  const isLiked = mpLiked.includes(mpCurrentTrackId)
   const artistImg = artists.find((a) => a.name === mpCurrentArtist)?.image
   const bgImage   = artistImg || mpCurrentCover
 
@@ -179,6 +179,39 @@ export default function FullscreenPlayer() {
             alignItems: 'center', justifyContent: 'center',
             gap: 0, minHeight: 0, overflow: 'hidden',
           }}>
+
+            {/* Volume — top left: icon only, slider appears on click */}
+            <div
+              style={{ position: 'absolute', top: 24, left: 28, zIndex: 50, display: 'flex', alignItems: 'center', gap: 10 }}
+              onMouseLeave={() => setVolOpen(false)}
+            >
+              <button
+                onClick={() => setVolOpen((v) => !v)}
+                title="Volume"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,.55)', display: 'flex', alignItems: 'center', padding: 4, flexShrink: 0, transition: 'color .12s' }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = '#fff')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(255,255,255,.55)')}
+              >
+                {mpVolume === 0
+                  ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: 'none' }}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+                  : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: 'none' }}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                }
+              </button>
+
+              {volOpen && (
+                <div
+                  onClick={(e) => {
+                    const r = e.currentTarget.getBoundingClientRect()
+                    mpSetVolume(Math.round(Math.max(0, Math.min(100, ((e.clientX - r.left) / r.width) * 100))))
+                  }}
+                  style={{ width: 80, height: 3, background: 'rgba(255,255,255,.15)', borderRadius: 2, cursor: 'pointer', flexShrink: 0, position: 'relative' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.height = '5px'; (e.currentTarget.firstChild as HTMLElement).style.background = '#1db954' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.height = '3px'; (e.currentTarget.firstChild as HTMLElement).style.background = 'rgba(255,255,255,.55)' }}
+                >
+                  <div style={{ height: '100%', width: `${mpVolume}%`, background: 'rgba(255,255,255,.55)', borderRadius: 2, pointerEvents: 'none', transition: 'width .1s' }} />
+                </div>
+              )}
+            </div>
 
             {/* Close */}
             <button
@@ -297,29 +330,6 @@ export default function FullscreenPlayer() {
               </AnimatePresence>
             </div>
 
-            {/* ── Like ── */}
-            <motion.button
-              key={`like-${mpCurrentTrackId}`}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1, duration: 0.2 }}
-              onClick={() => mpCurrentTrackId && mpToggleLike(mpCurrentTrackId)}
-              style={{
-                marginTop: 20,
-                background: 'none', border: 'none', cursor: 'pointer', padding: 8,
-                color: isLiked ? '#1db954' : 'rgba(255,255,255,.28)',
-                transition: 'color .15s, transform .15s',
-              }}
-              whileTap={{ scale: 0.85 }}
-              onMouseEnter={(e) => !isLiked && (e.currentTarget.style.color = 'rgba(255,255,255,.7)')}
-              onMouseLeave={(e) => !isLiked && (e.currentTarget.style.color = 'rgba(255,255,255,.28)')}
-            >
-              <svg width="22" height="22" viewBox="0 0 24 24"
-                fill={isLiked ? 'currentColor' : 'none'}
-                stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-              </svg>
-            </motion.button>
           </div>
 
           {/* ── Row 2 — controls ── */}
@@ -429,6 +439,7 @@ export default function FullscreenPlayer() {
                 </svg>
               </FsBtn>
             </div>
+
           </div>
 
         </motion.div>
