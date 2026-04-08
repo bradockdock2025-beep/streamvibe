@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next'
+import { withSentryConfig } from '@sentry/nextjs'
 
 const SUPABASE_HOSTNAME = process.env.NEXT_PUBLIC_SUPABASE_URL
   ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname
@@ -22,4 +23,19 @@ const nextConfig: NextConfig = {
   },
 }
 
-export default nextConfig
+export default withSentryConfig(nextConfig, {
+  // Sentry org/project from dashboard
+  org:     process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+
+  // Suppress the Sentry CLI output during builds
+  silent: true,
+
+  // Automatically instrument Next.js data fetching methods
+  autoInstrumentServerFunctions: true,
+
+  // Disable source map upload during local dev
+  sourcemaps: {
+    disable: process.env.NODE_ENV !== 'production',
+  },
+})

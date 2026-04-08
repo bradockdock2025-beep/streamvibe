@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { deleteTrackCascade } from '@/lib/music-delete'
-import { requireAdmin } from '@/lib/guard'
+import { requireAdminRole } from '@/lib/guard'
 
 type Ctx = { params: Promise<{ id: string }> }
 
 // DELETE /api/tracks/:id
 export async function DELETE(req: NextRequest, { params }: Ctx) {
-  const denied = requireAdmin(req)
-  if (denied) return denied
+  const auth = await requireAdminRole(req)
+  if (auth instanceof NextResponse) return auth
 
   const { id } = await params
 

@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { genId, upsertArtist, upsertAlbum } from '@/lib/db'
 import { saveAudioFile, saveCoverFile, fmtDurFromSec } from '@/lib/storage'
-import { requireAdmin } from '@/lib/guard'
+import { requireAdminRole } from '@/lib/guard'
+import { invalidateAlbums, invalidateArtists } from '@/lib/cache'
+import { rateLimit } from '@/lib/ratelimit'
+import { log } from '@/lib/logger'
+import { validateAudioMagicBytes } from '@/lib/magic-bytes'
 
 // POST /api/upload/track
 // FormData fields:
@@ -11,8 +15,11 @@ import { requireAdmin } from '@/lib/guard'
 //   cover?    — optional cover image file
 //   artistImage? — optional artist photo
 export async function POST(req: NextRequest) {
-  const denied = requireAdmin(req)
-  if (denied) return denied
+  const limited = await rateLimit(req, 'upload')
+  if (limited) return limited
+
+  const auth = await requireAdminRole(req)
+  if (auth instanceof NextResponse) return auth
 
   const form = await req.formData()
 
@@ -23,6 +30,17 @@ export async function POST(req: NextRequest) {
 
   if (!files.length) {
     return NextResponse.json({ error: 'No audio files provided' }, { status: 400 })
+  }
+
+  // Validate magic bytes for all audio files before processing
+  for (let i = 0; i < files.length; i++) {
+    const valid = await validateAudioMagicBytes(files[i])
+    if (!valid) {
+      return NextResponse.json(
+        { error: `File ${i + 1} ("${files[i].name}") is not a recognised audio format` },
+        { status: 415 },
+      )
+    }
   }
 
   // Upload cover and artist image once (shared across all tracks in this batch)
@@ -75,10 +93,11 @@ export async function POST(req: NextRequest) {
       if (error) throw new Error(error.message)
       created.push(track)
     } catch (err) {
-      console.error(`[upload/track] track ${i}:`, err)
+      log.error({ err, trackIndex: i }, '[upload/track] track failed')
       return NextResponse.json({ error: String(err) }, { status: 500 })
     }
   }
 
+  await Promise.all([invalidateAlbums(), invalidateArtists()])
   return NextResponse.json({ ok: true, tracks: created }, { status: 201 })
 }

@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { genId, upsertArtist } from '@/lib/db'
 import { saveAudioFile, saveCoverFile, fmtDurFromSec } from '@/lib/storage'
-import { requireAdmin } from '@/lib/guard'
+import { requireAdminRole } from '@/lib/guard'
+import { rateLimit } from '@/lib/ratelimit'
+import { log } from '@/lib/logger'
+import { validateAudioMagicBytes } from '@/lib/magic-bytes'
+import { inngest } from '@/lib/inngest'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -140,6 +144,17 @@ async function parseMultipartPayload(req: NextRequest): Promise<AlbumUploadInput
   if (!albumName) throw new UploadRequestError('albumName is required')
   if (!audioFiles.length) throw new UploadRequestError('No audio tracks provided')
 
+  // Validate magic bytes before any storage I/O
+  for (let i = 0; i < audioFiles.length; i++) {
+    const valid = await validateAudioMagicBytes(audioFiles[i])
+    if (!valid) {
+      throw new UploadRequestError(
+        `Track ${i + 1} ("${audioFiles[i].name}") is not a recognised audio format`,
+        415,
+      )
+    }
+  }
+
   const [coverUrl, artistImageUrl] = await Promise.all([
     coverFile?.size ? saveCoverFile(coverFile) : Promise.resolve(''),
     artistImageFile?.size ? saveCoverFile(artistImageFile) : Promise.resolve(''),
@@ -185,8 +200,11 @@ async function parseJsonPayload(req: NextRequest): Promise<AlbumUploadInput> {
 //   multipart/form-data with album metadata + files
 //   application/json with pre-uploaded storage URLs
 export async function POST(req: NextRequest) {
-  const denied = requireAdmin(req)
-  if (denied) return denied
+  const limited = await rateLimit(req, 'upload')
+  if (limited) return limited
+
+  const auth = await requireAdminRole(req)
+  if (auth instanceof NextResponse) return auth
 
   try {
     const contentType = req.headers.get('content-type') ?? ''
@@ -195,9 +213,22 @@ export async function POST(req: NextRequest) {
       : await parseMultipartPayload(req)
 
     const album = await persistAlbumUpload(payload)
+
+    // Fire async post-processing job — non-blocking
+    inngest.send({
+      name: 'music/album.uploaded',
+      data: {
+        albumId:    album.id,
+        albumName:  album.name,
+        artistName: album.artist?.name ?? '',
+        trackCount: (album.tracks ?? []).length,
+        userId:     auth.userId,
+      },
+    }).catch((err) => log.warn({ err }, '[inngest] Failed to send album.uploaded event'))
+
     return NextResponse.json({ ok: true, album }, { status: 201 })
   } catch (err) {
-    console.error('[upload/album]', err)
+    log.error({ err }, '[upload/album]')
 
     if (err instanceof UploadRequestError) {
       return NextResponse.json({ error: err.message }, { status: err.status })

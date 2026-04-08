@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { requireAdmin } from '@/lib/guard'
+import { requireAdminRole } from '@/lib/guard'
 import { randomUUID } from 'crypto'
 
 const ALLOWED_BUCKETS = ['audio', 'covers'] as const
@@ -10,8 +10,8 @@ type Bucket = (typeof ALLOWED_BUCKETS)[number]
 // Body: { filename: string, bucket: 'audio' | 'covers' }
 // Returns: { signedUrl, path, token, publicUrl }
 export async function POST(req: NextRequest) {
-  const denied = requireAdmin(req)
-  if (denied) return denied
+  const auth = await requireAdminRole(req)
+  if (auth instanceof NextResponse) return auth
 
   const { filename, bucket } = await req.json() as { filename?: string; bucket?: string }
 

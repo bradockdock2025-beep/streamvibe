@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useShallow } from 'zustand/react/shallow'
 import { useAppStore } from '@/store/useAppStore'
@@ -10,6 +10,7 @@ import TrackItem from './TrackItem'
 import HorizontalCarousel from './HorizontalCarousel'
 import PlaylistCard from './PlaylistCard'
 import UploadView from './UploadView'
+import AnalyticsView from './AnalyticsView'
 import DeleteButton from './DeleteButton'
 import DeleteConfirmModal from './DeleteConfirmModal'
 import CreatePlaylistModal from './CreatePlaylistModal'
@@ -17,6 +18,8 @@ import PlaylistDetailView from './PlaylistDetailView'
 import TrackPlaylistModal from './TrackPlaylistModal'
 import TrackActionsMenu from './TrackActionsMenu'
 import { adminHeaders } from '@/lib/utils'
+import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
+import { useMobile } from '@/hooks/useMobile'
 import type { DeleteDialogState } from './DeleteConfirmModal'
 import type { Album, Artist } from '@/types'
 
@@ -127,6 +130,7 @@ export default function MusicModule() {
         {mpView === 'artists'   && <ArtistsView key="artists" onRequestDelete={setDeleteDialog} />}
         {mpView === 'songs'     && <SongsView key="songs" onRequestDelete={setDeleteDialog} onOpenTrackPlaylist={setPlaylistPicker} />}
         {mpView === 'upload'    && <UploadView key="upload" />}
+        {mpView === 'analytics' && <AnalyticsView key="analytics" />}
         {(mpView === 'library' || mpView === 'radio' || mpView === 'popular') &&
           <LibraryView key="library" onRequestDelete={setDeleteDialog} />}
       </AnimatePresence>
@@ -226,16 +230,25 @@ function trackDeleteDialog(
 
 // ─── 1. Library — Albums home ─────────────────────────────────────────────────
 function LibraryView({ onRequestDelete }: { onRequestDelete: (dialog: DeleteDialogState) => void }) {
-  const { albums, albumsLoading, deleteAlbum } = useAppStore(useShallow((s) => ({
+  const { albums, albumsLoading, deleteAlbum, userRole } = useAppStore(useShallow((s) => ({
     albums:        s.albums,
     albumsLoading: s.albumsLoading,
     deleteAlbum:   s.deleteAlbum,
+    userRole:      s.userRole,
   })))
+  const isAdmin = userRole === 'admin'
+  const isMobile = useMobile()
+  const cardSize = isMobile ? 140 : 158
 
-  // Split albums into sections using real data
-  const recent   = [...albums].slice(0, 8)
-  const byGenre  = albums.filter((a) => a.genre === 'R&B').slice(0, 8)
-  const allAlbums = [...albums].reverse().slice(0, 12)
+  const recent  = albums.slice(0, 8)
+  const byGenre = albums.filter((a) => a.genre === 'R&B').slice(0, 8)
+  const allAlbums = [...albums].reverse()
+
+  const { visibleCount, hasMore, loading, sentinelRef } = useInfiniteScroll({
+    pageSize: 24,
+    total: allAlbums.length,
+  })
+  const visibleAlbums = allAlbums.slice(0, visibleCount)
 
   return (
     <motion.div
@@ -243,9 +256,9 @@ function LibraryView({ onRequestDelete }: { onRequestDelete: (dialog: DeleteDial
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.18 }}
-      style={{ flex: 1, overflowY: 'auto', padding: '36px 32px 32px' }}
+      style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '20px 14px 24px' : '36px 32px 32px' }}
     >
-      <h1 style={{ fontSize: 32, fontWeight: 800, color: '#fff', marginBottom: 32, letterSpacing: '-.6px' }}>
+      <h1 style={{ fontSize: isMobile ? 24 : 32, fontWeight: 800, color: '#fff', marginBottom: isMobile ? 20 : 32, letterSpacing: '-.6px' }}>
         Albums
         {albumsLoading && <span style={{ fontSize: 13, fontWeight: 400, color: 'rgba(255,255,255,.3)', marginLeft: 12 }}>Loading…</span>}
       </h1>
@@ -261,14 +274,7 @@ function LibraryView({ onRequestDelete }: { onRequestDelete: (dialog: DeleteDial
       {recent.length > 0 && (
         <HorizontalCarousel title="Recently Added" onSeeMore={() => {}}>
           {recent.map((a) => (
-            <AlbumCard
-              key={a.id}
-              album={a}
-              size={158}
-              onDelete={() => {
-                onRequestDelete(albumDeleteDialog(a, deleteAlbum))
-              }}
-            />
+            <AlbumCard key={a.id} album={a} size={cardSize} onDelete={isAdmin ? () => onRequestDelete(albumDeleteDialog(a, deleteAlbum)) : undefined} />
           ))}
         </HorizontalCarousel>
       )}
@@ -276,31 +282,25 @@ function LibraryView({ onRequestDelete }: { onRequestDelete: (dialog: DeleteDial
       {byGenre.length > 0 && (
         <HorizontalCarousel title="R&B" onSeeMore={() => {}}>
           {byGenre.map((a) => (
-            <AlbumCard
-              key={a.id}
-              album={a}
-              size={158}
-              onDelete={() => {
-                onRequestDelete(albumDeleteDialog(a, deleteAlbum))
-              }}
-            />
+            <AlbumCard key={a.id} album={a} size={cardSize} onDelete={isAdmin ? () => onRequestDelete(albumDeleteDialog(a, deleteAlbum)) : undefined} />
           ))}
         </HorizontalCarousel>
       )}
 
       {allAlbums.length > 0 && (
-        <HorizontalCarousel title="All Albums" onSeeMore={() => {}}>
-          {allAlbums.map((a) => (
-            <AlbumCard
-              key={a.id}
-              album={a}
-              size={158}
-              onDelete={() => {
-                onRequestDelete(albumDeleteDialog(a, deleteAlbum))
-              }}
-            />
-          ))}
-        </HorizontalCarousel>
+        <>
+          <h2 style={{ fontSize: 22, fontWeight: 700, color: '#fff', letterSpacing: '-.3px', marginBottom: 20 }}>
+            All Albums
+            <span style={{ fontSize: 13, fontWeight: 400, color: 'rgba(255,255,255,.3)', marginLeft: 10 }}>{allAlbums.length}</span>
+          </h2>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(158px, 1fr))', gap: isMobile ? 12 : 20, marginBottom: 24 }}>
+            {visibleAlbums.map((a) => (
+              <AlbumCard key={a.id} album={a} size={cardSize} onDelete={isAdmin ? () => onRequestDelete(albumDeleteDialog(a, deleteAlbum)) : undefined} />
+            ))}
+          </div>
+          {hasMore && <div ref={sentinelRef} style={{ height: 1 }} />}
+          {loading && <LoadMoreSpinner />}
+        </>
       )}
     </motion.div>
   )
@@ -308,6 +308,7 @@ function LibraryView({ onRequestDelete }: { onRequestDelete: (dialog: DeleteDial
 
 // ─── 2. Playlists view ────────────────────────────────────────────────────────
 function PlaylistsView({ onOpenCreatePlaylist }: { onOpenCreatePlaylist: (initialTrackIds?: string[]) => void }) {
+  const isMobile = useMobile()
   const { playlists, playlistsLoading, mpOpenPlaylist } = useAppStore(useShallow((s) => ({
     playlists:        s.playlists,
     playlistsLoading: s.playlistsLoading,
@@ -320,15 +321,15 @@ function PlaylistsView({ onOpenCreatePlaylist }: { onOpenCreatePlaylist: (initia
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.18 }}
-      style={{ flex: 1, overflowY: 'auto', padding: '36px 32px 32px' }}
+      style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '20px 14px 24px' : '36px 32px 32px' }}
     >
-      <h1 style={{ fontSize: 32, fontWeight: 800, color: '#fff', marginBottom: 8, letterSpacing: '-.6px' }}>
+      <h1 style={{ fontSize: isMobile ? 24 : 32, fontWeight: 800, color: '#fff', marginBottom: 8, letterSpacing: '-.6px' }}>
         Playlists
         {playlistsLoading && <span style={{ fontSize: 13, fontWeight: 400, color: 'rgba(255,255,255,.3)', marginLeft: 12 }}>Loading…</span>}
       </h1>
       <p style={{ fontSize: 13, color: 'rgba(255,255,255,.4)', marginBottom: 32 }}>Ordered collections of tracks already in your library</p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 28 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(180px, 1fr))', gap: isMobile ? 12 : 28 }}>
         {playlists.map((pl) => (
           <PlaylistCard key={pl.id} playlist={pl} onClick={() => mpOpenPlaylist(pl.id)} />
         ))}
@@ -367,12 +368,31 @@ function CreatePlaylistCard({ onClick }: { onClick: () => void }) {
 
 // ─── 3. Artists view ──────────────────────────────────────────────────────────
 function ArtistsView({ onRequestDelete }: { onRequestDelete: (dialog: DeleteDialogState) => void }) {
-  const { artists, artistsLoading, mpOpenArtist, deleteArtist } = useAppStore(useShallow((s) => ({
+  const { artists, artistsLoading, mpOpenArtist, deleteArtist, userRole } = useAppStore(useShallow((s) => ({
     artists:        s.artists,
     artistsLoading: s.artistsLoading,
     mpOpenArtist:   s.mpOpenArtist,
     deleteArtist:   s.deleteArtist,
+    userRole:       s.userRole,
   })))
+  const isAdmin = userRole === 'admin'
+  const isMobile = useMobile()
+
+  const [search, setSearch] = useState('')
+
+  const filtered = search
+    ? artists.filter((a) => a.name.toLowerCase().includes(search.toLowerCase()))
+    : artists
+
+  const { visibleCount, hasMore, loading, sentinelRef, reset } = useInfiniteScroll({
+    pageSize: 24,
+    total: filtered.length,
+  })
+
+  // Reset pagination whenever search changes
+  useEffect(() => { reset() }, [search, reset])
+
+  const visibleArtists = filtered.slice(0, visibleCount)
 
   return (
     <motion.div
@@ -386,26 +406,52 @@ function ArtistsView({ onRequestDelete }: { onRequestDelete: (dialog: DeleteDial
         Artists
         {artistsLoading && <span style={{ fontSize: 13, fontWeight: 400, color: 'rgba(255,255,255,.3)', marginLeft: 12 }}>Loading…</span>}
       </h1>
-      <p style={{ fontSize: 13, color: 'rgba(255,255,255,.4)', marginBottom: 32 }}>{artists.length} artists in your library</p>
+      <p style={{ fontSize: 13, color: 'rgba(255,255,255,.4)', marginBottom: 20 }}>
+        {search ? `${filtered.length} of ${artists.length}` : artists.length} artists
+      </p>
+
+      {/* Search */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 8, padding: '7px 13px', maxWidth: 280, marginBottom: 28, transition: 'border-color .15s' }}
+        onFocusCapture={(e) => (e.currentTarget.style.borderColor = 'rgba(255,255,255,.3)')}
+        onBlurCapture={(e) => (e.currentTarget.style.borderColor = 'rgba(255,255,255,.1)')}
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.4)" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0 }}>
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search artists..."
+          style={{ background: 'none', border: 'none', outline: 'none', fontSize: 13, color: '#fff', width: '100%', fontFamily: 'inherit' }}
+        />
+        {search && (
+          <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,.4)', display: 'flex', padding: 0 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        )}
+      </div>
 
       {artists.length === 0 && !artistsLoading && (
         <div style={{ textAlign: 'center', paddingTop: 80, color: 'rgba(255,255,255,.25)' }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>🎤</div>
           <p style={{ fontSize: 15, fontWeight: 500 }}>No artists yet</p>
           <p style={{ fontSize: 13, marginTop: 6 }}>Artists are created automatically when you upload music</p>
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 24 }}>
-        {artists.map((artist) => (
+      {filtered.length === 0 && search && (
+        <div style={{ textAlign: 'center', paddingTop: 60, color: 'rgba(255,255,255,.25)' }}>
+          <p style={{ fontSize: 14 }}>No artists match &quot;{search}&quot;</p>
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(auto-fill, minmax(160px, 1fr))', gap: isMobile ? 10 : 24 }}>
+        {visibleArtists.map((artist) => (
           <div key={artist.id}>
             <ArtistCard
               artist={artist}
               width={160}
               onClick={() => mpOpenArtist(artist.name)}
-              onDelete={() => {
-                onRequestDelete(artistDeleteDialog(artist, deleteArtist))
-              }}
+              onDelete={isAdmin ? () => onRequestDelete(artistDeleteDialog(artist, deleteArtist)) : undefined}
             />
             <div style={{ marginTop: 8, fontSize: 12, color: 'rgba(255,255,255,.45)', textAlign: 'center' }}>
               {artist.albumCount} {artist.albumCount === 1 ? 'album' : 'albums'}
@@ -413,6 +459,9 @@ function ArtistsView({ onRequestDelete }: { onRequestDelete: (dialog: DeleteDial
           </div>
         ))}
       </div>
+
+      {hasMore && <div ref={sentinelRef} style={{ height: 1 }} />}
+      {loading && <LoadMoreSpinner />}
     </motion.div>
   )
 }
@@ -425,7 +474,7 @@ function SongsView({
   onRequestDelete: (dialog: DeleteDialogState) => void
   onOpenTrackPlaylist: (track: { id: string; name: string; artistName: string }) => void
 }) {
-  const { albums, mpLiked, mpToggleLike, mpPlayTrack, mpPlaying, mpCurrentTrackId, deleteTrack, mpOpenAlbum, mpOpenArtist } = useAppStore(useShallow((s) => ({
+  const { albums, mpLiked, mpToggleLike, mpPlayTrack, mpPlaying, mpCurrentTrackId, deleteTrack, mpOpenAlbum, mpOpenArtist, userRole } = useAppStore(useShallow((s) => ({
     albums: s.albums,
     mpLiked: s.mpLiked,
     mpToggleLike: s.mpToggleLike,
@@ -435,7 +484,10 @@ function SongsView({
     deleteTrack: s.deleteTrack,
     mpOpenAlbum: s.mpOpenAlbum,
     mpOpenArtist: s.mpOpenArtist,
+    userRole: s.userRole,
   })))
+  const isAdmin = userRole === 'admin'
+  const isMobile = useMobile()
 
   const [sort, setSort] = useState<'recent' | 'az'>('recent')
   const [search, setSearch] = useState('')
@@ -453,6 +505,16 @@ function SongsView({
     )
     .sort((a, b) => sort === 'az' ? a.track.name.localeCompare(b.track.name) : 0)
 
+  const { visibleCount, hasMore, loading, sentinelRef, reset } = useInfiniteScroll({
+    pageSize: 50,
+    total: filtered.length,
+  })
+
+  // Reset pagination whenever search or sort changes
+  useEffect(() => { reset() }, [search, sort, reset])
+
+  const visibleSongs = filtered.slice(0, visibleCount)
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -462,8 +524,8 @@ function SongsView({
       style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
     >
       {/* Header */}
-      <div style={{ padding: '36px 32px 0', flexShrink: 0 }}>
-        <h1 style={{ fontSize: 32, fontWeight: 800, color: '#fff', marginBottom: 20, letterSpacing: '-.6px' }}>Songs</h1>
+      <div style={{ padding: isMobile ? '20px 14px 0' : '36px 32px 0', flexShrink: 0 }}>
+        <h1 style={{ fontSize: isMobile ? 24 : 32, fontWeight: 800, color: '#fff', marginBottom: 20, letterSpacing: '-.6px' }}>Songs</h1>
 
         {/* Controls row */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
@@ -504,31 +566,35 @@ function SongsView({
 
           <span style={{ fontSize: 12, color: 'rgba(255,255,255,.28)', marginLeft: 4 }}>
             {filtered.length} songs
+            {visibleCount < filtered.length && <span style={{ color: 'rgba(255,255,255,.18)' }}> · showing {visibleCount}</span>}
           </span>
         </div>
 
-        {/* Table header */}
-        <div style={{ display: 'grid', gridTemplateColumns: '32px 1fr 1fr 60px 44px', gap: '0 12px', padding: '0 8px 10px', borderBottom: '1px solid rgba(255,255,255,.07)' }}>
-          <span style={{ fontSize: 11, color: 'rgba(255,255,255,.28)', textAlign: 'center' }}>#</span>
-          <span style={{ fontSize: 11, color: 'rgba(255,255,255,.28)', letterSpacing: '.4px', textTransform: 'uppercase' }}>Title</span>
-          <span style={{ fontSize: 11, color: 'rgba(255,255,255,.28)', letterSpacing: '.4px', textTransform: 'uppercase' }}>Album</span>
-          <span style={{ fontSize: 11, color: 'rgba(255,255,255,.28)', textAlign: 'right', letterSpacing: '.4px', textTransform: 'uppercase' }}>Time</span>
-          <span />
-        </div>
       </div>
 
       {/* Scrollable list */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 32px 32px' }}>
-        {filtered.map(({ track, album, idx }, i) => {
+      <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '4px 14px 32px' : '4px 32px 32px' }}>
+        {/* Table header */}
+        {!isMobile && (
+          <div style={{ display: 'grid', gridTemplateColumns: '32px 1fr 1fr 60px 44px', gap: '0 12px', padding: '0 8px 10px', borderBottom: '1px solid rgba(255,255,255,.07)' }}>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,.28)', textAlign: 'center' }}>#</span>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,.28)', letterSpacing: '.4px', textTransform: 'uppercase' }}>Title</span>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,.28)', letterSpacing: '.4px', textTransform: 'uppercase' }}>Album</span>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,.28)', textAlign: 'right', letterSpacing: '.4px', textTransform: 'uppercase' }}>Time</span>
+            <span />
+          </div>
+        )}
+        {visibleSongs.map(({ track, album, idx }, i) => {
           const isPlaying = mpPlaying && mpCurrentTrackId === track.id
           const isLiked = mpLiked.includes(track.id)
+          const cols = isMobile ? '32px 1fr 52px 36px' : '32px 1fr 1fr 60px 44px'
           return (
             <div
               key={track.id}
               onClick={() => mpPlayTrack(album.id, idx)}
               style={{
-                display: 'grid', gridTemplateColumns: '32px 1fr 1fr 60px 44px', gap: '0 12px',
-                padding: '7px 8px', borderRadius: 6, cursor: 'pointer',
+                display: 'grid', gridTemplateColumns: cols, gap: '0 10px',
+                padding: isMobile ? '9px 6px' : '7px 8px', borderRadius: 6, cursor: 'pointer',
                 background: isPlaying ? 'rgba(29,185,84,.08)' : 'transparent',
                 transition: 'background .12s', alignItems: 'center',
               }}
@@ -546,21 +612,23 @@ function SongsView({
                   {track.name}
                 </div>
                 <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {album.artist}
+                  {album.artist}{isMobile && <> · {album.name}</>}
                 </div>
               </div>
 
-              {/* Album */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                <div style={{ width: 30, height: 30, borderRadius: 3, overflow: 'hidden', flexShrink: 0, background: '#252530', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {album.cover
-                    ? /* eslint-disable-next-line @next/next/no-img-element */
-                      <img src={album.cover} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />
-                    : <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.2)' }}>{album.name.charAt(0).toUpperCase()}</span>
-                  }
+              {/* Album — desktop only */}
+              {!isMobile && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: 3, overflow: 'hidden', flexShrink: 0, background: '#252530', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {album.cover
+                      ? /* eslint-disable-next-line @next/next/no-img-element */
+                        <img src={album.cover} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />
+                      : <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.2)' }}>{album.name.charAt(0).toUpperCase()}</span>
+                    }
+                  </div>
+                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,.4)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{album.name}</span>
                 </div>
-                <span style={{ fontSize: 12, color: 'rgba(255,255,255,.4)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{album.name}</span>
-              </div>
+              )}
 
               {/* Duration */}
               <span style={{ fontSize: 12, color: 'rgba(255,255,255,.35)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
@@ -575,14 +643,14 @@ function SongsView({
                   onAddToPlaylist={() => onOpenTrackPlaylist({ id: track.id, name: track.name, artistName: album.artist })}
                   onGoToAlbum={() => mpOpenAlbum(album.id)}
                   onGoToArtist={() => mpOpenArtist(album.artist)}
-                  onDelete={() => {
-                    onRequestDelete(trackDeleteDialog(track, album, deleteTrack))
-                  }}
+                  onDelete={isAdmin ? () => onRequestDelete(trackDeleteDialog(track, album, deleteTrack)) : undefined}
                 />
               </div>
             </div>
           )
         })}
+        {hasMore && <div ref={sentinelRef} style={{ height: 1 }} />}
+        {loading && <LoadMoreSpinner />}
       </div>
     </motion.div>
   )
@@ -598,7 +666,7 @@ function AlbumDetailView({
   onRequestDelete: (dialog: DeleteDialogState) => void
   onOpenTrackPlaylist: (track: { id: string; name: string; artistName: string }) => void
 }) {
-  const { albums, mpPlayAlbum, mpOpenArtist, mpLiked, mpToggleLike, deleteAlbum, deleteTrack, updateAlbumCover } = useAppStore(useShallow((s) => ({
+  const { albums, mpPlayAlbum, mpOpenArtist, mpLiked, mpToggleLike, deleteAlbum, deleteTrack, updateAlbumCover, userRole } = useAppStore(useShallow((s) => ({
     albums: s.albums,
     mpPlayAlbum: s.mpPlayAlbum,
     mpOpenArtist: s.mpOpenArtist,
@@ -607,7 +675,9 @@ function AlbumDetailView({
     deleteAlbum: s.deleteAlbum,
     deleteTrack: s.deleteTrack,
     updateAlbumCover: s.updateAlbumCover,
+    userRole: s.userRole,
   })))
+  const isAdmin = userRole === 'admin'
 
   const [coverHover, setCoverHover] = useState(false)
   const [coverUploading, setCoverUploading] = useState(false)
@@ -663,20 +733,20 @@ function AlbumDetailView({
 
         {/* Content */}
         <div style={{ position: 'relative', zIndex: 1, display: 'flex', gap: 28, alignItems: 'flex-end' }}>
-          {/* Cover — click to replace */}
+          {/* Cover — click to replace (admin only) */}
           <div
-            style={{ position: 'relative', width: 200, height: 200, borderRadius: 8, overflow: 'hidden', flexShrink: 0, boxShadow: '0 16px 48px rgba(0,0,0,.6)', background: '#2a2a3a', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-            onMouseEnter={() => setCoverHover(true)}
+            style={{ position: 'relative', width: 200, height: 200, borderRadius: 8, overflow: 'hidden', flexShrink: 0, boxShadow: '0 16px 48px rgba(0,0,0,.6)', background: '#2a2a3a', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isAdmin ? 'pointer' : 'default' }}
+            onMouseEnter={() => isAdmin && setCoverHover(true)}
             onMouseLeave={() => setCoverHover(false)}
-            onClick={() => coverInputRef.current?.click()}
+            onClick={() => isAdmin && coverInputRef.current?.click()}
           >
             {album.cover
               ? /* eslint-disable-next-line @next/next/no-img-element */
                 <img src={album.cover} alt={album.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
               : <span style={{ fontSize: 64, fontWeight: 800, color: 'rgba(255,255,255,.15)' }}>{album.name.charAt(0).toUpperCase()}</span>
             }
-            {/* Hover / uploading overlay */}
-            {(coverHover || coverUploading) && (
+            {/* Hover / uploading overlay — admin only */}
+            {isAdmin && (coverHover || coverUploading) && (
               <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.55)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                 {coverUploading
                   ? <div style={{ width: 28, height: 28, border: '3px solid rgba(255,255,255,.2)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
@@ -690,13 +760,15 @@ function AlbumDetailView({
                 }
               </div>
             )}
-            <input
-              ref={coverInputRef}
-              type="file"
-              accept="image/*"
-              style={{ display: 'none' }}
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleCoverChange(f); e.target.value = '' }}
-            />
+            {isAdmin && (
+              <input
+                ref={coverInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleCoverChange(f); e.target.value = '' }}
+              />
+            )}
           </div>
 
           {/* Meta */}
@@ -738,31 +810,35 @@ function AlbumDetailView({
               >
                 + Follow
               </button>
-              <button
-                onClick={() => coverInputRef.current?.click()}
-                disabled={coverUploading}
-                style={{ display: 'flex', alignItems: 'center', gap: 7, background: 'none', border: '1.5px solid rgba(255,255,255,.25)', color: 'rgba(255,255,255,.75)', borderRadius: 24, padding: '9px 18px', fontSize: 13, cursor: coverUploading ? 'default' : 'pointer', fontFamily: 'inherit', transition: 'border-color .15s, color .15s', opacity: coverUploading ? .6 : 1 }}
-                onMouseEnter={(e) => { if (!coverUploading) { e.currentTarget.style.borderColor = '#fff'; e.currentTarget.style.color = '#fff' } }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,.25)'; e.currentTarget.style.color = 'rgba(255,255,255,.75)' }}
-              >
-                {coverUploading
-                  ? <div style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,.2)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
-                  : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-                      <circle cx="12" cy="13" r="4"/>
-                    </svg>
-                }
-                {coverUploading ? 'Uploading…' : 'Change Cover'}
-              </button>
-              <DeleteButton
-                variant="pill"
-                label="Delete Album"
-                title={`Delete album ${album.name}`}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onRequestDelete(albumDeleteDialog(album, deleteAlbum))
-                }}
-              />
+              {isAdmin && (
+                <button
+                  onClick={() => coverInputRef.current?.click()}
+                  disabled={coverUploading}
+                  style={{ display: 'flex', alignItems: 'center', gap: 7, background: 'none', border: '1.5px solid rgba(255,255,255,.25)', color: 'rgba(255,255,255,.75)', borderRadius: 24, padding: '9px 18px', fontSize: 13, cursor: coverUploading ? 'default' : 'pointer', fontFamily: 'inherit', transition: 'border-color .15s, color .15s', opacity: coverUploading ? .6 : 1 }}
+                  onMouseEnter={(e) => { if (!coverUploading) { e.currentTarget.style.borderColor = '#fff'; e.currentTarget.style.color = '#fff' } }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,.25)'; e.currentTarget.style.color = 'rgba(255,255,255,.75)' }}
+                >
+                  {coverUploading
+                    ? <div style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,.2)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+                    : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                        <circle cx="12" cy="13" r="4"/>
+                      </svg>
+                  }
+                  {coverUploading ? 'Uploading…' : 'Change Cover'}
+                </button>
+              )}
+              {isAdmin && (
+                <DeleteButton
+                  variant="pill"
+                  label="Delete Album"
+                  title={`Delete album ${album.name}`}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onRequestDelete(albumDeleteDialog(album, deleteAlbum))
+                  }}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -789,9 +865,7 @@ function AlbumDetailView({
             onLike={() => mpToggleLike(track.id)}
             onAddToPlaylist={() => onOpenTrackPlaylist({ id: track.id, name: track.name, artistName: album.artist })}
             onGoToArtist={() => mpOpenArtist(album.artist)}
-            onDelete={() => {
-              onRequestDelete(trackDeleteDialog(track, album, deleteTrack))
-            }}
+            onDelete={isAdmin ? () => onRequestDelete(trackDeleteDialog(track, album, deleteTrack)) : undefined}
           />
         ))}
       </div>
@@ -807,7 +881,7 @@ function AlbumTrackRow({ track, index, album, liked, onLike, onAddToPlaylist, on
   onLike: () => void
   onAddToPlaylist: () => void
   onGoToArtist: () => void
-  onDelete: () => void | Promise<void>
+  onDelete?: () => void | Promise<void>
 }) {
   const { mpPlayTrack, mpPlaying, mpCurrentTrackId } = useAppStore(useShallow((s) => ({
     mpPlayTrack: s.mpPlayTrack,
@@ -861,7 +935,7 @@ function ArtistDetailView({
   onRequestDelete: (dialog: DeleteDialogState) => void
   onOpenTrackPlaylist: (track: { id: string; name: string; artistName: string }) => void
 }) {
-  const { albums, artists, mpOpenAlbum, deleteArtist, deleteTrack, mpToggleLike, mpLiked, updateArtistImage } = useAppStore(useShallow((s) => ({
+  const { albums, artists, mpOpenAlbum, deleteArtist, deleteTrack, mpToggleLike, mpLiked, updateArtistImage, userRole } = useAppStore(useShallow((s) => ({
     albums:      s.albums,
     artists:     s.artists,
     mpOpenAlbum: s.mpOpenAlbum,
@@ -870,7 +944,9 @@ function ArtistDetailView({
     mpToggleLike: s.mpToggleLike,
     mpLiked: s.mpLiked,
     updateArtistImage: s.updateArtistImage,
+    userRole: s.userRole,
   })))
+  const isAdmin = userRole === 'admin'
 
   const [activeTab, setActiveTab] = useState(0)
   const [heroHover, setHeroHover] = useState(false)
@@ -968,15 +1044,17 @@ function ArtistDetailView({
                 }
                 {heroUploading ? 'Uploading…' : 'Change Photo'}
               </button>
-              <DeleteButton
-                variant="pill"
-                label="Delete Artist"
-                title={`Delete artist ${artistData.name}`}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onRequestDelete(artistDeleteDialog(artistData, deleteArtist))
-                }}
-              />
+              {isAdmin && (
+                <DeleteButton
+                  variant="pill"
+                  label="Delete Artist"
+                  title={`Delete artist ${artistData.name}`}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onRequestDelete(artistDeleteDialog(artistData, deleteArtist))
+                  }}
+                />
+              )}
             </div>
           )}
         </div>
@@ -1038,9 +1116,7 @@ function ArtistDetailView({
                 onToggleLike={() => mpToggleLike(track.id)}
                 onAddToPlaylist={() => onOpenTrackPlaylist({ id: track.id, name: track.name, artistName: album.artist })}
                 onGoToAlbum={() => mpOpenAlbum(album.id)}
-                onDelete={() => {
-                  onRequestDelete(trackDeleteDialog(track, album, deleteTrack))
-                }}
+                onDelete={isAdmin ? () => onRequestDelete(trackDeleteDialog(track, album, deleteTrack)) : undefined}
               />
             ))}
           </div>
@@ -1108,6 +1184,21 @@ function ArtistDetailView({
 }
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
+
+function LoadMoreSpinner() {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', padding: '16px 0 8px' }}>
+      <div style={{
+        width: 22, height: 22,
+        border: '2.5px solid rgba(255,255,255,.12)',
+        borderTopColor: 'rgba(255,255,255,.45)',
+        borderRadius: '50%',
+        animation: 'spin 0.7s linear infinite',
+      }} />
+    </div>
+  )
+}
+
 // ─── Animated sound wave indicator ───────────────────────────────────────────
 function SoundWave() {
   const bars = [

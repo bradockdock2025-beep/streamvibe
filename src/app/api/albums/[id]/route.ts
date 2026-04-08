@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { deleteAlbumCascade } from '@/lib/music-delete'
-import { requireAdmin } from '@/lib/guard'
+import { requireAdminRole } from '@/lib/guard'
+import { invalidateAlbums, invalidateArtists } from '@/lib/cache'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -46,17 +47,19 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  await invalidateAlbums()
   return NextResponse.json(updated)
 }
 
 // DELETE /api/albums/:id
 export async function DELETE(req: NextRequest, { params }: Ctx) {
-  const denied = requireAdmin(req)
-  if (denied) return denied
+  const auth = await requireAdminRole(req)
+  if (auth instanceof NextResponse) return auth
 
   const { id } = await params
   try {
     const summary = await deleteAlbumCascade(id)
+    await Promise.all([invalidateAlbums(), invalidateArtists()])
     return NextResponse.json({ ok: true, ...summary })
   } catch (error) {
     const message = String(error)

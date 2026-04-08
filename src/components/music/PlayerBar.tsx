@@ -1,10 +1,15 @@
 'use client'
 
+import { useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useAppStore } from '@/store/useAppStore'
 import { parseDur, fmtDur } from '@/lib/utils'
+import { useMobile } from '@/hooks/useMobile'
+import QueuePanel from './QueuePanel'
 
 export default function PlayerBar() {
+  const isMobile = useMobile()
+  const [queueOpen, setQueueOpen] = useState(false)
   const {
     mpPlaying, mpTogglePlay, mpPrev, mpNext,
     mpCurrentTrackName, mpCurrentTrackId, mpCurrentArtist, mpCurrentCover, mpCurrentDur,
@@ -51,8 +56,81 @@ export default function PlayerBar() {
     mpSetVolume(Math.round(Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100))))
   }
 
+  // ── Mobile mini-player ────────────────────────────────────────────────────
+  if (isMobile) {
+    return (
+      <div style={{ background: '#141418', borderTop: '1px solid rgba(255,255,255,.06)', flexShrink: 0 }}>
+        {/* Seek bar */}
+        <div
+          onClick={seekClick}
+          style={{ height: 2, background: 'rgba(255,255,255,.09)', cursor: hasTrack ? 'pointer' : 'default', position: 'relative' }}
+        >
+          <div style={{ height: '100%', background: '#1db954', width: `${mpProgress}%`, pointerEvents: 'none' }} />
+        </div>
+
+        <div style={{ height: 58, display: 'flex', alignItems: 'center', padding: '0 14px', gap: 10 }}>
+          {/* Cover */}
+          <div style={{ width: 38, height: 38, borderRadius: 4, background: '#252530', overflow: 'hidden', flexShrink: 0 }}>
+            {mpCurrentCover && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={mpCurrentCover} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            )}
+          </div>
+
+          {/* Track info */}
+          <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: hasTrack ? '#fff' : 'rgba(255,255,255,.3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {mpCurrentTrackName || 'Not playing'}
+            </div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {mpCurrentArtist}
+            </div>
+          </div>
+
+          {/* Like */}
+          <button
+            onClick={() => hasTrack && mpToggleLike(mpCurrentTrackId)}
+            style={{ background: 'none', border: 'none', cursor: hasTrack ? 'pointer' : 'default', color: isLiked ? '#1db954' : 'rgba(255,255,255,.35)', display: 'flex', padding: 6, flexShrink: 0 }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill={isLiked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+            </svg>
+          </button>
+
+          {/* Prev */}
+          <button onClick={mpPrev} disabled={!hasTrack} style={{ background: 'none', border: 'none', cursor: hasTrack ? 'pointer' : 'default', color: 'rgba(255,255,255,.6)', display: 'flex', padding: 6, flexShrink: 0, opacity: hasTrack ? 1 : 0.3 }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none"/></svg>
+          </button>
+
+          {/* Play/Pause */}
+          <button
+            onClick={mpTogglePlay}
+            disabled={!hasTrack}
+            style={{ width: 40, height: 40, borderRadius: '50%', background: hasTrack ? '#fff' : 'rgba(255,255,255,.14)', border: 'none', cursor: hasTrack ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: hasTrack ? 1 : 0.4 }}
+          >
+            {mpPlaying
+              ? <svg width="14" height="14" viewBox="0 0 24 24" fill="#111"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+              : <svg width="14" height="14" viewBox="0 0 24 24" fill="#111"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            }
+          </button>
+
+          {/* Next */}
+          <button onClick={mpNext} disabled={!hasTrack} style={{ background: 'none', border: 'none', cursor: hasTrack ? 'pointer' : 'default', color: 'rgba(255,255,255,.6)', display: 'flex', padding: 6, flexShrink: 0, opacity: hasTrack ? 1 : 0.3 }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="4" x2="19" y2="20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none"/></svg>
+          </button>
+
+          {/* Fullscreen */}
+          <button onClick={mpToggleFullscreen} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,.4)', display: 'flex', padding: 6, flexShrink: 0 }}>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{ position: 'relative', background: '#141418', borderTop: '1px solid rgba(255,255,255,.06)', flexShrink: 0 }}>
+      {queueOpen && <QueuePanel onClose={() => setQueueOpen(false)} />}
 
       {/* ── Thin seekable progress line at very top ── */}
       <div
@@ -160,9 +238,9 @@ export default function PlayerBar() {
           </span>
 
           {/* Queue */}
-          <CtrlBtn onClick={() => {}} title="Queue">
+          <ToggleBtn onClick={() => setQueueOpen((o) => !o)} active={queueOpen} title="Queue">
             <QueueIcon />
-          </CtrlBtn>
+          </ToggleBtn>
 
           {/* Volume icon */}
           <CtrlBtn onClick={() => mpSetVolume(mpVolume === 0 ? 70 : 0)} title="Mute">

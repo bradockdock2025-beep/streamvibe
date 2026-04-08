@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { saveCoverFile } from '@/lib/storage'
-import { requireAdmin } from '@/lib/guard'
+import { requireAdminRole } from '@/lib/guard'
 
 // POST /api/upload/image — upload a cover/artist image, returns { url }
 export async function POST(req: NextRequest) {
-  const denied = requireAdmin(req)
-  if (denied) return denied
+  const auth = await requireAdminRole(req)
+  if (auth instanceof NextResponse) return auth
 
   const form = await req.formData()
   const file = form.get('file')

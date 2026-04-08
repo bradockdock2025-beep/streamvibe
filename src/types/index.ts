@@ -70,7 +70,7 @@ export interface UploadFile {
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 export type AppPage   = 'auth' | 'hub' | 'app'
-export type MpView    = 'library' | 'playlists' | 'artists' | 'songs' | 'popular' | 'radio' | 'upload'
+export type MpView    = 'library' | 'playlists' | 'artists' | 'songs' | 'popular' | 'radio' | 'upload' | 'analytics'
 
 // ─── API response shapes ──────────────────────────────────────────────────────
 // Prisma includes nested relations; these match the API JSON output

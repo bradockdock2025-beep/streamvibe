@@ -2,12 +2,32 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { setAuthToken, clearAuthToken } from '@/lib/auth-client'
 import { useAppStore } from '@/store/useAppStore'
 import HubApp from './HubApp'
+import type { Album, Artist } from '@/types'
 
-export default function ClientHubApp() {
-  // null = still resolving, true/false = resolved
+interface Props {
+  initialAlbums?:  Album[]
+  initialArtists?: Artist[]
+}
+
+export default function ClientHubApp({ initialAlbums = [], initialArtists = [] }: Props) {
+  // null = still resolving, true = resolved
   const [ready, setReady] = useState(false)
+
+  // Seed store with server-fetched data before auth resolves.
+  // openMusicApp() checks `if (!albums.length)` before fetching,
+  // so pre-seeding here skips the client-side round-trip entirely.
+  useEffect(() => {
+    if (initialAlbums.length || initialArtists.length) {
+      useAppStore.setState({
+        albums:  initialAlbums,
+        artists: initialArtists,
+      })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     /**
@@ -19,10 +39,17 @@ export default function ClientHubApp() {
       const { setUser, openMusicApp, goAuth } = useAppStore.getState()
 
       if (session?.user) {
+        // Store JWT in memory — used by adminHeaders() for API calls
+        setAuthToken(session.access_token)
+
         const u        = session.user
         const name     = u.user_metadata?.full_name || u.email?.split('@')[0] || 'User'
         const initials = name.slice(0, 2).toUpperCase()
         setUser({ name, email: u.email ?? '', initials })
+
+        // Extract role from app_metadata (set server-side, not user-editable)
+        const role = u.app_metadata?.role === 'admin' ? 'admin' : 'listener'
+        useAppStore.getState().setUserRole(role)
 
         // Only navigate to app on initial load or explicit sign-in
         // Avoid re-navigating on TOKEN_REFRESHED (would reset view state)
@@ -30,9 +57,10 @@ export default function ClientHubApp() {
           openMusicApp()
         }
       } else if (event === 'INITIAL_SESSION') {
-        // No session on load — stay on auth page, mark ready
-        // (goAuth not needed, page defaults to 'auth')
+        // No session on load — stay on auth page
+        clearAuthToken()
       } else if (event === 'SIGNED_OUT') {
+        clearAuthToken()
         goAuth()
       }
 

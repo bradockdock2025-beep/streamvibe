@@ -3,6 +3,7 @@ import type { AppPage, MpView, Album, Track, Artist, Playlist, UploadFile } from
 import type { ApiAlbum, ApiArtist, ApiTrack, ApiPlaylist } from '@/types'
 import { adminHeaders, uid } from '@/lib/utils'
 import { audioManager } from '@/lib/audioManager'
+import { supabase } from '@/lib/supabase'
 
 // ─── Adapters: API shape → store shape ───────────────────────────────────────
 function apiAlbumToStore(a: ApiAlbum): Album {
@@ -131,6 +132,7 @@ function stoppedPlayerState() {
 }
 
 // ─── User ─────────────────────────────────────────────────────────────────────
+type UserRole = 'admin' | 'listener'
 interface User { name: string; email: string; initials: string }
 
 // ─── State interface ──────────────────────────────────────────────────────────
@@ -138,6 +140,7 @@ interface AppState {
   // Navigation
   page: AppPage
   user: User
+  userRole: UserRole
 
   // Toast
   toastMsg:     string
@@ -183,9 +186,11 @@ interface AppState {
 
   // ── Actions — Navigation ────────────────────────────────────────────────────
   setUser:      (u: User) => void
+  setUserRole:  (role: UserRole) => void
   goAuth:       () => void
   goHub:        () => void
   openMusicApp: () => void
+  signOut:      () => Promise<void>
 
   // ── Actions — Toast ─────────────────────────────────────────────────────────
   showToast: (msg: string) => void
@@ -358,6 +363,21 @@ export const useAppStore = create<AppState>((set, get) => {
     }
   }
 
+  // Preloads the next track into the crossfade buffer (fire-and-forget)
+  const preloadQueueItem = (queue: PlaybackQueueItem[], queueIdx: number) => {
+    const item = queue[queueIdx]
+    if (!item) return
+    const resolved = resolveQueueItem(item)
+    if (!resolved) return
+    const { track } = resolved
+    if (!track.fileUrl) return
+
+    fetch(`/api/stream/${track.id}`, { headers: adminHeaders() })
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => audioManager.preloadNext(data?.streamUrl ?? track.fileUrl))
+      .catch(() => audioManager.preloadNext(track.fileUrl))
+  }
+
   const playQueueAt = (queue: PlaybackQueueItem[], queueIdx: number) => {
     const item = queue[queueIdx]
     if (!item) return
@@ -384,8 +404,25 @@ export const useAppStore = create<AppState>((set, get) => {
     })
 
     if (track.fileUrl) {
-      audioManager.play(track.fileUrl)
+      const { mpShuffling, mpRepeating } = get()
+      fetch(`/api/stream/${track.id}`, { headers: adminHeaders() })
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => {
+          audioManager.play(data?.streamUrl ?? track.fileUrl)
+          if (!mpShuffling && !mpRepeating) preloadQueueItem(queue, queueIdx + 1)
+        })
+        .catch(() => {
+          audioManager.play(track.fileUrl)
+          if (!mpShuffling && !mpRepeating) preloadQueueItem(queue, queueIdx + 1)
+        })
     }
+
+    // Record play event — fire and forget, errors are silent
+    fetch('/api/plays', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...adminHeaders() },
+      body: JSON.stringify({ trackId: track.id }),
+    }).catch(() => {/* silent */})
 
     get().showToast(`▶ ${track.name}`)
   }
@@ -420,6 +457,7 @@ export const useAppStore = create<AppState>((set, get) => {
   // ── App ──
   page:             'auth',
   user:             { name: 'Usuário', email: 'usuario@exemplo.com', initials: 'US' },
+  userRole:         'listener' as UserRole,
   toastMsg:         '',
   toastVisible:     false,
   uploadModalOpen:  false,
@@ -456,15 +494,28 @@ export const useAppStore = create<AppState>((set, get) => {
   uploadFiles:         [],
 
   // ── Navigation ──
-  setUser: (u) => set({ user: u }),
+  setUser:     (u)    => set({ user: u }),
+  setUserRole: (role) => set({ userRole: role }),
   goAuth: () => set({ page: 'auth' }),
   goHub:  () => set({ page: 'hub' }),
+
+  signOut: async () => {
+    audioManager.stop()
+    await supabase.auth.signOut()
+    // clearAuthToken + goAuth triggered by onAuthStateChange SIGNED_OUT in ClientHubApp
+    set({
+      ...stoppedPlayerState(),
+      albums: [], artists: [], playlists: [], mpLiked: [],
+      mpView: 'library', mpCurrentAlbumId: null, mpCurrentArtistName: null, mpCurrentPlaylistId: null,
+    })
+  },
 
   openMusicApp: () => {
     set({ page: 'app', mpView: 'library', mpCurrentAlbumId: null, mpCurrentArtistName: null, mpCurrentPlaylistId: null })
     if (!get().albums.length)    get().fetchAlbums()
     if (!get().artists.length)   get().fetchArtists()
     if (!get().playlists.length) get().fetchPlaylists()
+    get().fetchLikes()
   },
 
   // ── Toast ──
@@ -481,10 +532,10 @@ export const useAppStore = create<AppState>((set, get) => {
   fetchAlbums: async () => {
     set({ albumsLoading: true })
     try {
-      const res  = await fetch('/api/albums')
+      const res  = await fetch('/api/albums?limit=100')
       const body = await res.json()
       if (!res.ok) { console.error(`[fetchAlbums] HTTP ${res.status}`, body); set({ albumsLoading: false }); return }
-      const data: ApiAlbum[] = Array.isArray(body) ? body : []
+      const data: ApiAlbum[] = Array.isArray(body) ? body : (body?.albums ?? [])
       set({ albums: data.map(apiAlbumToStore), albumsLoading: false })
     } catch (error) {
       console.error('[fetchAlbums]', error)
@@ -495,10 +546,10 @@ export const useAppStore = create<AppState>((set, get) => {
   fetchArtists: async () => {
     set({ artistsLoading: true })
     try {
-      const res  = await fetch('/api/artists')
+      const res  = await fetch('/api/artists?limit=100')
       const body = await res.json()
       if (!res.ok) { console.error('[fetchArtists]', body); set({ artistsLoading: false }); return }
-      const data: ApiArtist[] = Array.isArray(body) ? body : []
+      const data: ApiArtist[] = Array.isArray(body) ? body : (body?.artists ?? [])
       set({ artists: data.map(apiArtistToStore), artistsLoading: false })
     } catch (error) {
       console.error('[fetchArtists]', error)
@@ -509,7 +560,7 @@ export const useAppStore = create<AppState>((set, get) => {
   fetchPlaylists: async () => {
     set({ playlistsLoading: true })
     try {
-      const res  = await fetch('/api/playlists')
+      const res  = await fetch('/api/playlists', { headers: adminHeaders() })
       const body = await res.json()
       if (!res.ok) { console.error('[fetchPlaylists]', body); set({ playlistsLoading: false }); return }
       const data: ApiPlaylist[] = Array.isArray(body) ? body : []
@@ -532,7 +583,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
   fetchLikes: async () => {
     try {
-      const res  = await fetch('/api/likes')
+      const res  = await fetch('/api/likes', { headers: adminHeaders() })
       const body = await res.json()
       if (!res.ok) { console.error('[fetchLikes]', body); return }
       set({ mpLiked: Array.isArray(body) ? body : [] })
@@ -626,7 +677,7 @@ export const useAppStore = create<AppState>((set, get) => {
     try {
       await fetch('/api/likes', {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...adminHeaders() },
         body:    JSON.stringify({ trackId }),
       })
     } catch {
@@ -843,8 +894,70 @@ if (typeof window !== 'undefined') {
     useAppStore.setState({ mpProgress: pct, mpCurrentSec: currentSec, mpTotalSec: totalSec })
   })
 
+  // Natural end (no crossfade active) → advance to next track normally
   audioManager.onEnded(() => {
     useAppStore.getState().mpNext()
+  })
+
+  // Crossfade started: the next track's audio is already fading in.
+  // Update UI to show the next track and preload the one after it.
+  audioManager.onCrossfadeStart(() => {
+    const s = useAppStore.getState()
+    const { mpQueue, mpQueueIdx, mpShuffling, mpRepeating, albums } = s
+    if (!mpQueue.length) return
+
+    // Compute next queue index (mirrors mpNext logic, no shuffle during crossfade)
+    const nextIdx = mpRepeating
+      ? mpQueueIdx
+      : Math.min(mpQueue.length - 1, mpQueueIdx + 1)
+
+    const nextItem = mpQueue[nextIdx]
+    if (!nextItem || nextIdx === mpQueueIdx) return
+
+    const nextAlbum = albums.find((a) => a.id === nextItem.albumId)
+    if (!nextAlbum) return
+    const nextTrackIdx = nextAlbum.tracks.findIndex((t) => t.id === nextItem.trackId)
+    if (nextTrackIdx < 0) return
+    const nextTrack = nextAlbum.tracks[nextTrackIdx]
+
+    // Advance UI to the incoming track
+    useAppStore.setState({
+      mpQueueIdx:          nextIdx,
+      mpTrackIdx:          nextTrackIdx,
+      mpProgress:          0,
+      mpCurrentSec:        0,
+      mpTotalSec:          nextTrack.durationSec,
+      mpAudioError:        '',
+      mpCurrentTrackId:    nextTrack.id,
+      mpCurrentTrackName:  nextTrack.name,
+      mpCurrentArtist:     nextAlbum.artist,
+      mpCurrentCover:      nextAlbum.cover,
+      mpCurrentDur:        nextTrack.dur,
+      mpPlaying:           true,
+    })
+
+    // Record play for incoming track
+    fetch('/api/plays', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', ...adminHeaders() },
+      body:    JSON.stringify({ trackId: nextTrack.id }),
+    }).catch(() => {})
+
+    // Preload next-next so the crossfade chain continues (sequential only)
+    if (!mpShuffling && !mpRepeating) {
+      const nnIdx  = Math.min(mpQueue.length - 1, nextIdx + 1)
+      const nnItem = mpQueue[nnIdx]
+      if (nnItem && nnIdx !== nextIdx) {
+        const nnAlbum = albums.find((a) => a.id === nnItem.albumId)
+        const nnTrack = nnAlbum?.tracks.find((t) => t.id === nnItem.trackId)
+        if (nnTrack?.fileUrl) {
+          fetch(`/api/stream/${nnTrack.id}`, { headers: adminHeaders() })
+            .then((res) => res.ok ? res.json() : null)
+            .then((data) => audioManager.preloadNext(data?.streamUrl ?? nnTrack.fileUrl))
+            .catch(() => audioManager.preloadNext(nnTrack.fileUrl))
+        }
+      }
+    }
   })
 
   audioManager.onError((msg) => {

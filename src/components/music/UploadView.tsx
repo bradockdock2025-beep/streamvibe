@@ -4,29 +4,24 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore } from '@/store/useAppStore'
 import { adminHeaders } from '@/lib/utils'
-import { supabase } from '@/lib/supabase'
+import { uploadWithProgress, registerTrackSSE } from '@/lib/upload-utils'
 
 type UploadMode = null | 'track' | 'album'
-type StorageBucket = 'audio' | 'covers'
-
-interface SignedUploadPayload {
-  path: string
-  publicUrl: string
-  token: string
-}
 
 interface LocalTrack {
-  id:          string
-  file:        File
-  name:        string
-  artist:      string
-  albumName:   string   // existing or new album name
-  genre:       string
-  durationSec: number   // extracted client-side via AudioContext
-  coverFile:   File | null
-  progress:    number   // 0-100, -1 = error
-  done:        boolean
-  fileUrl:     string   // returned from API after upload
+  id:            string
+  file:          File
+  name:          string
+  artist:        string
+  albumName:     string   // existing or new album name
+  genre:         string
+  durationSec:   number   // extracted client-side via AudioContext
+  coverFile:     File | null
+  progress:      number   // 0-100, -1 = error
+  progressLabel: string   // human-readable phase label
+  done:          boolean
+  fileUrl:       string   // returned from API after upload
+  errorMsg:      string   // human-readable error shown in UI
 }
 
 interface AlbumMeta {
@@ -40,23 +35,10 @@ interface AlbumMeta {
 
 const GENRES     = ['Pop','Hip-Hop','R&B','Rock','Electronic','Jazz','Classical','Alternative','Indie','Soul','Funk','Latin','Other']
 const AUDIO_EXTS = ['.mp3','.flac','.wav','.m4a','.ogg','.aac']
-const AUDIO_CONTENT_TYPES: Record<string, string> = {
-  mp3: 'audio/mpeg',
-  flac: 'audio/flac',
-  wav: 'audio/wav',
-  m4a: 'audio/mp4',
-  ogg: 'audio/ogg',
-  aac: 'audio/aac',
-}
-const IMAGE_CONTENT_TYPES: Record<string, string> = {
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  png: 'image/png',
-  webp: 'image/webp',
-  gif: 'image/gif',
-}
 
 function uid() { return Math.random().toString(36).slice(2) }
+
+const MAX_AUDIO_BYTES = 200 * 1024 * 1024 // 200 MB — must match Supabase Storage settings
 
 function isAudioFile(f: File) {
   return AUDIO_EXTS.some((ext) => f.name.toLowerCase().endsWith(ext))
@@ -67,14 +49,8 @@ function getAudioDuration(file: File): Promise<number> {
   return new Promise((resolve) => {
     const audio = new Audio()
     const url   = URL.createObjectURL(file)
-    audio.addEventListener('loadedmetadata', () => {
-      URL.revokeObjectURL(url)
-      resolve(isFinite(audio.duration) ? Math.floor(audio.duration) : 0)
-    })
-    audio.addEventListener('error', () => {
-      URL.revokeObjectURL(url)
-      resolve(0)
-    })
+    audio.addEventListener('loadedmetadata', () => { URL.revokeObjectURL(url); resolve(isFinite(audio.duration) ? Math.floor(audio.duration) : 0) })
+    audio.addEventListener('error', () => { URL.revokeObjectURL(url); resolve(0) })
     audio.src = url
   })
 }
@@ -84,53 +60,6 @@ function fmtDur(sec: number): string {
   return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`
 }
 
-function fileExt(name: string, fallback: string): string {
-  const ext = name.split('.').pop()?.toLowerCase() || fallback
-  return ext
-}
-
-function fileContentType(file: File, bucket: StorageBucket): string {
-  if (file.type) return file.type
-  const ext = fileExt(file.name, bucket === 'audio' ? 'mp3' : 'jpg')
-  const map = bucket === 'audio' ? AUDIO_CONTENT_TYPES : IMAGE_CONTENT_TYPES
-  return map[ext] ?? (bucket === 'audio' ? 'audio/mpeg' : 'image/jpeg')
-}
-
-async function createSignedUpload(filename: string, bucket: StorageBucket): Promise<SignedUploadPayload> {
-  const res = await fetch('/api/upload/sign', {
-    method: 'POST',
-    headers: { ...adminHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filename, bucket }),
-  })
-
-  const data = await res.json()
-  if (!res.ok) {
-    throw new Error(data?.error || 'Failed to create signed upload URL')
-  }
-
-  return data as SignedUploadPayload
-}
-
-async function uploadFileToStorage(file: File, bucket: StorageBucket) {
-  const signed = await createSignedUpload(file.name, bucket)
-  const { error } = await supabase.storage
-    .from(bucket)
-    .uploadToSignedUrl(signed.path, signed.token, file, {
-      cacheControl: '31536000',
-      contentType: fileContentType(file, bucket),
-      upsert: false,
-    })
-
-  if (error) {
-    throw new Error(error.message)
-  }
-
-  return {
-    publicUrl: signed.publicUrl,
-    fileSize: file.size,
-    format: fileExt(file.name, bucket === 'audio' ? 'mp3' : 'jpg').toUpperCase(),
-  }
-}
 
 // ─── Main export ─────────────────────────────────────────────────────────────
 export default function UploadView() {
@@ -297,13 +226,19 @@ function TrackUploader() {
     if (!files) return
     const audioFiles = Array.from(files).filter(isAudioFile)
     if (!audioFiles.length) return
-    const placeholders: LocalTrack[] = audioFiles.map((f) => ({
-      id: uid(), file: f,
-      name: f.name.replace(/\.[^.]+$/, ''),
-      artist: '', albumName: '', genre: 'Pop',
-      durationSec: 0, coverFile: null,
-      progress: 0, done: false, fileUrl: '',
-    }))
+    const placeholders: LocalTrack[] = audioFiles.map((f) => {
+      const tooBig = f.size > MAX_AUDIO_BYTES
+      return {
+        id: uid(), file: f,
+        name: f.name.replace(/\.[^.]+$/, ''),
+        artist: '', albumName: '', genre: 'Pop',
+        durationSec: 0, coverFile: null,
+        progress: tooBig ? -1 : 0,
+        progressLabel: '',
+        done: false, fileUrl: '',
+        errorMsg: tooBig ? `File too large (${(f.size / 1024 / 1024).toFixed(1)} MB). Max 50 MB.` : '',
+      }
+    })
     setTracks((prev) => [...prev, ...placeholders])
     const durations = await Promise.all(audioFiles.map(getAudioDuration))
     setTracks((prev) => prev.map((t) => {
@@ -320,42 +255,76 @@ function TrackUploader() {
     if (!tracks.length || submitting) return
     setSubmitting(true)
 
-    async function uploadOne(track: LocalTrack) {
-      if (track.done) return
-      const form = new FormData()
-      form.append('files[]', track.file)
-      form.append('meta[]', JSON.stringify({
-        name:        track.name      || track.file.name.replace(/\.[^.]+$/, ''),
-        artist:      track.artist    || 'Unknown Artist',
-        albumName:   track.albumName || 'Singles',
-        genre:       track.genre,
-        durationSec: track.durationSec,
-      }))
-      if (track.coverFile) form.append('cover', track.coverFile)
-      if (artistImage)     form.append('artistImage', artistImage)
+    let anyFailed = false
 
-      const iv = setInterval(() => {
-        setTracks((prev) => prev.map((t) =>
-          t.id === track.id && t.progress < 85 ? { ...t, progress: t.progress + Math.random() * 12 + 4 } : t
-        ))
-      }, 150)
+    function setProgress(id: string, pct: number, label: string) {
+      setTracks((prev) => prev.map((t) => t.id === id ? { ...t, progress: Math.round(pct), progressLabel: label } : t))
+    }
+
+    async function uploadOne(track: LocalTrack) {
+      if (track.done || track.progress === -1) { if (track.progress === -1) anyFailed = true; return }
+
       try {
-        const res = await fetch('/api/upload/track', { method: 'POST', body: form, headers: adminHeaders() })
-        clearInterval(iv)
-        const data = await res.json()
+        const headers = adminHeaders()
+
+        // Phase 1: real XHR upload to storage with byte-level progress (0 → 80%)
+        const uploaded = await uploadWithProgress(
+          track.file, 'audio', headers,
+          ({ pct, label }) => setProgress(track.id, pct * 0.8, label),
+        )
+
+        // Phase 2: cover upload (80 → 85%)
+        setProgress(track.id, 80, 'Uploading cover…')
+        const coverUrl = track.coverFile
+          ? (await uploadWithProgress(track.coverFile, 'covers', headers, () => {})).publicUrl
+          : ''
+        const artistImageUrl = artistImage
+          ? (await uploadWithProgress(artistImage, 'covers', headers, () => {})).publicUrl
+          : ''
+
+        // Phase 3: SSE stream — server registers metadata and streams progress (85 → 100%)
+        setProgress(track.id, 85, 'Processing…')
+        await registerTrackSSE(
+          {
+            name:           track.name      || track.file.name.replace(/\.[^.]+$/, ''),
+            artist:         track.artist    || 'Unknown Artist',
+            albumName:      track.albumName || 'Singles',
+            genre:          track.genre,
+            durationSec:    track.durationSec,
+            fileUrl:        uploaded.publicUrl,
+            fileSize:       uploaded.fileSize,
+            format:         uploaded.format,
+            coverUrl,
+            artistImageUrl,
+          },
+          headers,
+          ({ pct, label }) => {
+            // Map server's 20–95% into our 85–99% range
+            const mapped = 85 + (pct / 100) * 14
+            setProgress(track.id, mapped, label)
+          },
+        )
+
         setTracks((prev) => prev.map((t) =>
-          t.id === track.id ? { ...t, progress: res.ok ? 100 : -1, done: res.ok, fileUrl: data.tracks?.[0]?.fileUrl ?? '' } : t
+          t.id === track.id
+            ? { ...t, progress: 100, progressLabel: 'Done', done: true, fileUrl: uploaded.publicUrl, errorMsg: '' }
+            : t,
         ))
-      } catch {
-        clearInterval(iv)
-        setTracks((prev) => prev.map((t) => t.id === track.id ? { ...t, progress: -1 } : t))
+      } catch (e) {
+        anyFailed = true
+        const errMsg = e instanceof Error ? e.message : 'Upload failed'
+        setTracks((prev) => prev.map((t) =>
+          t.id === track.id ? { ...t, progress: -1, progressLabel: '', errorMsg: errMsg } : t,
+        ))
       }
     }
 
     await Promise.all(tracks.map(uploadOne))
     setSubmitting(false)
-    await refreshAfterUpload()
-    setTracks([])
+    if (!anyFailed) {
+      await refreshAfterUpload()
+      setTracks([])
+    }
   }
 
   const allDone  = tracks.length > 0 && tracks.every((t) => t.done)
@@ -480,10 +449,23 @@ function TrackUploader() {
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                   </button>
 
-                  {/* Progress bar */}
+                  {/* Progress bar + label */}
                   {t.progress > 0 && !t.done && t.progress !== -1 && (
-                    <div style={{ gridColumn: '1 / -1', height: 2, background: 'rgba(255,255,255,.07)', borderRadius: 1, overflow: 'hidden', marginTop: -4 }}>
-                      <motion.div animate={{ width: `${t.progress}%` }} transition={{ duration: 0.15 }} style={{ height: '100%', background: '#1db954', borderRadius: 1 }} />
+                    <>
+                      <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: -2 }}>
+                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,.35)' }}>{t.progressLabel || 'Uploading…'}</span>
+                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,.28)', fontVariantNumeric: 'tabular-nums' }}>{t.progress}%</span>
+                      </div>
+                      <div style={{ gridColumn: '1 / -1', height: 2, background: 'rgba(255,255,255,.07)', borderRadius: 1, overflow: 'hidden' }}>
+                        <motion.div animate={{ width: `${t.progress}%` }} transition={{ duration: 0.15 }} style={{ height: '100%', background: '#1db954', borderRadius: 1 }} />
+                      </div>
+                    </>
+                  )}
+
+                  {/* Error message */}
+                  {t.progress === -1 && t.errorMsg && (
+                    <div style={{ gridColumn: '1 / -1', fontSize: 11, color: '#e05252', marginTop: -2, paddingLeft: 2 }}>
+                      {t.errorMsg}
                     </div>
                   )}
                 </div>
@@ -538,15 +520,17 @@ function AlbumUploader() {
 
     const placeholders: LocalTrack[] = audioFiles.map((f) => ({
       id: uid(), file: f,
-      name:        f.name.replace(/\.[^.]+$/, ''),
-      artist:      albumMeta.artist,
-      albumName:   albumMeta.name,
-      genre:       albumMeta.genre,
-      durationSec: 0,
-      coverFile:   null,
-      progress:    0,
-      done:        false,
-      fileUrl:     '',
+      name:          f.name.replace(/\.[^.]+$/, ''),
+      artist:        albumMeta.artist,
+      albumName:     albumMeta.name,
+      genre:         albumMeta.genre,
+      durationSec:   0,
+      coverFile:     null,
+      progress:      0,
+      progressLabel: '',
+      done:          false,
+      fileUrl:       '',
+      errorMsg:      '',
     }))
     setTracks((prev) => [...prev, ...placeholders])
 
@@ -570,75 +554,70 @@ function AlbumUploader() {
     if (!canSave) return
     setSubmitting(true)
 
+    const headers = adminHeaders()
+
+    function setTrackProgress(id: string, pct: number, label: string) {
+      setTracks((prev) => prev.map((t) => t.id === id ? { ...t, progress: Math.round(pct), progressLabel: label } : t))
+    }
+
     try {
+      // Upload cover + artist image in parallel (no per-file progress needed here)
       const [coverUpload, artistUpload] = await Promise.all([
-        albumMeta.coverFile ? uploadFileToStorage(albumMeta.coverFile, 'covers') : Promise.resolve(null),
-        artistImage ? uploadFileToStorage(artistImage, 'covers') : Promise.resolve(null),
+        albumMeta.coverFile ? uploadWithProgress(albumMeta.coverFile, 'covers', headers, () => {}) : Promise.resolve(null),
+        artistImage ? uploadWithProgress(artistImage, 'covers', headers, () => {}) : Promise.resolve(null),
       ])
 
       const uploadedTracks = []
 
+      // Upload audio tracks sequentially with real XHR progress
       for (let i = 0; i < tracks.length; i++) {
         const track = tracks[i]
-        let progress = 3
-
-        setTracks((prev) => prev.map((t) =>
-          t.id === track.id ? { ...t, progress } : t
-        ))
-
-        const interval = setInterval(() => {
-          progress = Math.min(progress + Math.random() * 10 + 4, 88)
-          setTracks((prev) => prev.map((t) =>
-            t.id === track.id ? { ...t, progress: Math.round(progress) } : t
-          ))
-        }, 180)
-
         try {
-          const uploaded = await uploadFileToStorage(track.file, 'audio')
-          clearInterval(interval)
-
+          const uploaded = await uploadWithProgress(
+            track.file, 'audio', headers,
+            ({ pct, label }) => setTrackProgress(track.id, pct * 0.95, label),
+          )
           uploadedTracks.push({
-            name: track.name,
-            trackNumber: i + 1,
-            genre: track.genre,
-            durationSec: track.durationSec,
-            fileUrl: uploaded.publicUrl,
-            fileSize: uploaded.fileSize,
-            format: uploaded.format,
+            name: track.name, trackNumber: i + 1,
+            genre: track.genre, durationSec: track.durationSec,
+            fileUrl: uploaded.publicUrl, fileSize: uploaded.fileSize, format: uploaded.format,
           })
-
-          setTracks((prev) => prev.map((t) =>
-            t.id === track.id ? { ...t, progress: 95, fileUrl: uploaded.publicUrl } : t
-          ))
+          setTrackProgress(track.id, 96, 'Waiting…')
         } catch (err) {
-          clearInterval(interval)
+          setTracks((prev) => prev.map((t) =>
+            t.id === track.id ? { ...t, progress: -1, progressLabel: '', errorMsg: err instanceof Error ? err.message : 'Upload failed' } : t,
+          ))
           throw err
         }
       }
 
+      // Register the full album via API
+      setTracks((prev) => prev.map((t) => ({ ...t, progressLabel: 'Saving album…' })))
       const res = await fetch('/api/upload/album', {
         method: 'POST',
-        headers: { ...adminHeaders(), 'Content-Type': 'application/json' },
+        headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          albumName: albumMeta.name,
-          artistName: albumMeta.artist,
-          year: albumMeta.year,
-          genre: albumMeta.genre,
-          coverUrl: coverUpload?.publicUrl || albumMeta.coverUrl,
+          albumName:     albumMeta.name,
+          artistName:    albumMeta.artist,
+          year:          albumMeta.year,
+          genre:         albumMeta.genre,
+          coverUrl:      coverUpload?.publicUrl || albumMeta.coverUrl,
           artistImageUrl: artistUpload?.publicUrl || '',
-          tracks: uploadedTracks,
+          tracks:        uploadedTracks,
         }),
       })
 
       if (res.ok) {
-        setTracks((prev) => prev.map((t) => ({ ...t, progress: 100, done: true })))
+        setTracks((prev) => prev.map((t) => ({ ...t, progress: 100, progressLabel: 'Done', done: true })))
         setSubmitted(true)
         await refreshAfterUpload()
       } else {
-        setTracks((prev) => prev.map((t) => ({ ...t, progress: -1 })))
+        const body = await res.json().catch(() => null)
+        const msg = body?.error ?? `Server error ${res.status}`
+        setTracks((prev) => prev.map((t) => ({ ...t, progress: -1, progressLabel: '', errorMsg: msg })))
       }
     } catch {
-      setTracks((prev) => prev.map((t) => ({ ...t, progress: -1 })))
+      setTracks((prev) => prev.map((t) => t.progress !== -1 ? { ...t, progress: -1, progressLabel: '' } : t))
     }
 
     setSubmitting(false)

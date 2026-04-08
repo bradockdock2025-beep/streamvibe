@@ -3,8 +3,11 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useShallow } from 'zustand/react/shallow'
 import { useAppStore } from '@/store/useAppStore'
+import { usePushNotifications } from '@/hooks/usePushNotifications'
 
 export default function UploadModal() {
+  const { state: pushState, subscribe, unsubscribe } = usePushNotifications()
+
   const { uploadModalOpen, closeUploadModal, uploadFiles, simulateUpload, removeUploadFile, showToast } = useAppStore(useShallow((s) => ({
     uploadModalOpen: s.uploadModalOpen,
     closeUploadModal: s.closeUploadModal,
@@ -98,6 +101,32 @@ export default function UploadModal() {
                 ))}
               </div>
             </div>
+
+            {/* Push notification toggle */}
+            {pushState !== 'unsupported' && pushState !== 'denied' && (
+              <div style={{ padding: '10px 16px', borderTop: '.5px solid var(--b1)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={pushState === 'subscribed' ? 'var(--teal)' : 'var(--t3)'} strokeWidth="2" strokeLinecap="round">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                </svg>
+                <span style={{ flex: 1, fontSize: 11, color: 'var(--t2)' }}>
+                  {pushState === 'subscribed' ? 'Notificações activas' : 'Notificar quando upload terminar'}
+                </span>
+                <button
+                  onClick={pushState === 'subscribed' ? unsubscribe : subscribe}
+                  disabled={pushState === 'loading'}
+                  style={{
+                    fontSize: 11, padding: '4px 10px', borderRadius: 'var(--r)',
+                    border: '.5px solid var(--b2)', cursor: pushState === 'loading' ? 'default' : 'pointer',
+                    background: pushState === 'subscribed' ? 'var(--teald)' : 'var(--bg3)',
+                    color: pushState === 'subscribed' ? 'var(--teal)' : 'var(--t2)',
+                    fontFamily: 'inherit', opacity: pushState === 'loading' ? 0.5 : 1,
+                    transition: 'all .15s',
+                  }}
+                >
+                  {pushState === 'loading' ? '…' : pushState === 'subscribed' ? 'Desativar' : 'Ativar'}
+                </button>
+              </div>
+            )}
 
             {/* Footer */}
             <div style={{ padding: '11px 16px', borderTop: '.5px solid var(--b1)', display: 'flex', justifyContent: 'flex-end', gap: 7 }}>

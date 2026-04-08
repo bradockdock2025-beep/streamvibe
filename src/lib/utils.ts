@@ -1,3 +1,5 @@
+import { getAuthToken } from './auth-client'
+
 export function parseDur(s: string): number {
   const [m, sec] = s.split(':').map(Number)
   return m * 60 + sec
@@ -22,9 +24,9 @@ export function uid(): string {
 
 /**
  * Returns the Authorization header for write API routes.
- * Works in both Client Components (NEXT_PUBLIC_ADMIN_SECRET) and server-side code.
+ * Uses the Supabase JWT stored in auth-client — never exposes secrets to the client.
  */
 export function adminHeaders(): HeadersInit {
-  const secret = process.env.NEXT_PUBLIC_ADMIN_SECRET
-  return secret ? { Authorization: `Bearer ${secret}` } : {}
+  const token = getAuthToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
 }

@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { requireAuth } from '@/lib/guard'
 import { genId } from '@/lib/db'
-import { requireAdmin } from '@/lib/guard'
+import { rateLimit } from '@/lib/ratelimit'
 
 function normalizeStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return []
-
   const seen = new Set<string>()
   const items: string[] = []
-
   for (const item of value) {
     if (typeof item !== 'string') continue
     const trimmed = item.trim()
@@ -16,15 +15,15 @@ function normalizeStringArray(value: unknown): string[] {
     seen.add(trimmed)
     items.push(trimmed)
   }
-
   return items
 }
 
-async function playlistExists(playlistId: string) {
+async function playlistExists(playlistId: string, userId: string) {
   const { data, error } = await supabaseAdmin
     .from('Playlist')
     .select('id')
     .eq('id', playlistId)
+    .eq('userId', userId)
     .maybeSingle()
 
   if (error) return { exists: false, error: error.message }
@@ -33,16 +32,10 @@ async function playlistExists(playlistId: string) {
 
 async function validateTrackIds(trackIds: string[]) {
   if (!trackIds.length) return { ok: true, error: null as string | null }
-
-  const { data, error } = await supabaseAdmin
-    .from('Track')
-    .select('id')
-    .in('id', trackIds)
-
+  const { data, error } = await supabaseAdmin.from('Track').select('id').in('id', trackIds)
   if (error) return { ok: false, error: error.message }
-
-  const foundIds = new Set((data ?? []).map((track) => track.id))
-  const missing = trackIds.some((trackId) => !foundIds.has(trackId))
+  const foundIds = new Set((data ?? []).map((t) => t.id))
+  const missing = trackIds.some((id) => !foundIds.has(id))
   return { ok: !missing, error: missing ? 'one or more tracks do not exist' : null }
 }
 
@@ -54,21 +47,22 @@ async function resequencePlaylistTracks(playlistId: string) {
     .order('order', { ascending: true })
 
   if (error) return error.message
-
   for (const [index, row] of (data ?? []).entries()) {
-    const { error: updateError } = await supabaseAdmin
-      .from('PlaylistTrack')
-      .update({ order: index })
-      .eq('id', row.id)
-
-    if (updateError) return updateError.message
+    const { error: e } = await supabaseAdmin
+      .from('PlaylistTrack').update({ order: index }).eq('id', row.id)
+    if (e) return e.message
   }
-
   return null
 }
 
-// GET /api/playlists
-export async function GET() {
+// GET /api/playlists — only playlists owned by the authenticated user
+export async function GET(req: NextRequest) {
+  const limited = await rateLimit(req, 'read')
+  if (limited) return limited
+
+  const auth = await requireAuth(req)
+  if (auth instanceof NextResponse) return auth
+
   const { data, error } = await supabaseAdmin
     .from('Playlist')
     .select(`
@@ -83,6 +77,7 @@ export async function GET() {
         )
       )
     `)
+    .eq('userId', auth.userId)
     .order('createdAt', { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -99,35 +94,30 @@ export async function GET() {
 
 // POST /api/playlists  body: { name, description?, trackIds? }
 export async function POST(req: NextRequest) {
-  const denied = requireAdmin(req)
-  if (denied) return denied
+  const limited = await rateLimit(req, 'write')
+  if (limited) return limited
+
+  const auth = await requireAuth(req)
+  if (auth instanceof NextResponse) return auth
 
   const body = await req.json().catch(() => null)
   const name = String(body?.name ?? '').trim()
   const description = String(body?.description ?? '').trim()
   const trackIds = normalizeStringArray(body?.trackIds)
 
-  if (!name) {
-    return NextResponse.json({ error: 'name required' }, { status: 400 })
-  }
-
-  if (name.length > 120) {
-    return NextResponse.json({ error: 'name too long' }, { status: 400 })
-  }
-
-  if (description.length > 500) {
-    return NextResponse.json({ error: 'description too long' }, { status: 400 })
-  }
+  if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 })
+  if (name.length > 120) return NextResponse.json({ error: 'name too long' }, { status: 400 })
+  if (description.length > 500) return NextResponse.json({ error: 'description too long' }, { status: 400 })
 
   const tracksValidation = await validateTrackIds(trackIds)
   if (!tracksValidation.ok) {
-    const status = tracksValidation.error === 'one or more tracks do not exist' ? 400 : 500
-    return NextResponse.json({ error: tracksValidation.error }, { status })
+    return NextResponse.json({ error: tracksValidation.error },
+      { status: tracksValidation.error === 'one or more tracks do not exist' ? 400 : 500 })
   }
 
   const { data, error } = await supabaseAdmin
     .from('Playlist')
-    .insert({ id: genId(), name, description })
+    .insert({ id: genId(), name, description, userId: auth.userId })
     .select()
     .single()
 
@@ -138,12 +128,7 @@ export async function POST(req: NextRequest) {
   if (trackIds.length) {
     const { error: linkError } = await supabaseAdmin
       .from('PlaylistTrack')
-      .insert(trackIds.map((trackId, index) => ({
-        id: genId(),
-        playlistId: data.id,
-        trackId,
-        order: index,
-      })))
+      .insert(trackIds.map((trackId, index) => ({ id: genId(), playlistId: data.id, trackId, order: index })))
 
     if (linkError) {
       await supabaseAdmin.from('Playlist').delete().eq('id', data.id)
@@ -154,30 +139,23 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(data, { status: 201 })
 }
 
-// PATCH /api/playlists
-// body:
-//   { playlistId, action: 'add', trackId? | trackIds? }
-//   { playlistId, action: 'remove', trackId }
-//   { playlistId, action: 'reorder', orderedTrackIds }
+// PATCH /api/playlists — add / remove / reorder tracks
 export async function PATCH(req: NextRequest) {
-  const denied = requireAdmin(req)
-  if (denied) return denied
+  const limited = await rateLimit(req, 'write')
+  if (limited) return limited
+
+  const auth = await requireAuth(req)
+  if (auth instanceof NextResponse) return auth
 
   const body = await req.json().catch(() => null)
   const playlistId = String(body?.playlistId ?? '').trim()
   const action = String(body?.action ?? '').trim()
 
-  if (!playlistId) {
-    return NextResponse.json({ error: 'playlistId required' }, { status: 400 })
-  }
+  if (!playlistId) return NextResponse.json({ error: 'playlistId required' }, { status: 400 })
 
-  const playlistCheck = await playlistExists(playlistId)
-  if (playlistCheck.error) {
-    return NextResponse.json({ error: playlistCheck.error }, { status: 500 })
-  }
-  if (!playlistCheck.exists) {
-    return NextResponse.json({ error: 'Playlist not found' }, { status: 404 })
-  }
+  const playlistCheck = await playlistExists(playlistId, auth.userId)
+  if (playlistCheck.error) return NextResponse.json({ error: playlistCheck.error }, { status: 500 })
+  if (!playlistCheck.exists) return NextResponse.json({ error: 'Playlist not found' }, { status: 404 })
 
   if (action === 'add') {
     const singleTrackId = String(body?.trackId ?? '').trim()
@@ -185,110 +163,67 @@ export async function PATCH(req: NextRequest) {
     if (singleTrackId) trackIds.unshift(singleTrackId)
     const normalizedTrackIds = normalizeStringArray(trackIds)
 
-    if (!normalizedTrackIds.length) {
-      return NextResponse.json({ error: 'trackId required' }, { status: 400 })
-    }
+    if (!normalizedTrackIds.length) return NextResponse.json({ error: 'trackId required' }, { status: 400 })
 
     const tracksValidation = await validateTrackIds(normalizedTrackIds)
     if (!tracksValidation.ok) {
-      const status = tracksValidation.error === 'one or more tracks do not exist' ? 400 : 500
-      return NextResponse.json({ error: tracksValidation.error }, { status })
+      return NextResponse.json({ error: tracksValidation.error },
+        { status: tracksValidation.error === 'one or more tracks do not exist' ? 400 : 500 })
     }
 
     const { data: existing, error: existingError } = await supabaseAdmin
-      .from('PlaylistTrack')
-      .select('trackId, order')
-      .eq('playlistId', playlistId)
-      .order('order', { ascending: true })
+      .from('PlaylistTrack').select('trackId, order').eq('playlistId', playlistId).order('order', { ascending: true })
 
-    if (existingError) {
-      return NextResponse.json({ error: existingError.message }, { status: 500 })
-    }
+    if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 })
 
-    const existingTrackIds = new Set((existing ?? []).map((row) => row.trackId))
-    const nextTrackIds = normalizedTrackIds.filter((trackId) => !existingTrackIds.has(trackId))
+    const existingTrackIds = new Set((existing ?? []).map((r) => r.trackId))
+    const nextTrackIds = normalizedTrackIds.filter((id) => !existingTrackIds.has(id))
+    if (!nextTrackIds.length) return NextResponse.json({ ok: true, action: 'noop' })
 
-    if (!nextTrackIds.length) {
-      return NextResponse.json({ ok: true, action: 'noop' })
-    }
-
-    const maxOrder = (existing ?? []).reduce((acc, row) => Math.max(acc, row.order ?? -1), -1)
+    const maxOrder = (existing ?? []).reduce((acc, r) => Math.max(acc, r.order ?? -1), -1)
     const { error: insertError } = await supabaseAdmin
       .from('PlaylistTrack')
-      .insert(nextTrackIds.map((trackId, index) => ({
-        id: genId(),
-        playlistId,
-        trackId,
-        order: maxOrder + index + 1,
-      })))
+      .insert(nextTrackIds.map((trackId, i) => ({ id: genId(), playlistId, trackId, order: maxOrder + i + 1 })))
 
-    if (insertError) {
-      return NextResponse.json({ error: insertError.message }, { status: 500 })
-    }
-
+    if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 })
     return NextResponse.json({ ok: true, action: 'added' })
   }
 
   if (action === 'remove') {
     const trackId = String(body?.trackId ?? '').trim()
-    if (!trackId) {
-      return NextResponse.json({ error: 'trackId required' }, { status: 400 })
-    }
+    if (!trackId) return NextResponse.json({ error: 'trackId required' }, { status: 400 })
 
     const { error } = await supabaseAdmin
-      .from('PlaylistTrack')
-      .delete()
-      .eq('playlistId', playlistId)
-      .eq('trackId', trackId)
+      .from('PlaylistTrack').delete().eq('playlistId', playlistId).eq('trackId', trackId)
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     const resequenceError = await resequencePlaylistTracks(playlistId)
-    if (resequenceError) {
-      return NextResponse.json({ error: resequenceError }, { status: 500 })
-    }
-
+    if (resequenceError) return NextResponse.json({ error: resequenceError }, { status: 500 })
     return NextResponse.json({ ok: true, action: 'removed' })
   }
 
   if (action === 'reorder') {
     const orderedTrackIds = normalizeStringArray(body?.orderedTrackIds)
-    if (!orderedTrackIds.length) {
-      return NextResponse.json({ error: 'orderedTrackIds required' }, { status: 400 })
-    }
+    if (!orderedTrackIds.length) return NextResponse.json({ error: 'orderedTrackIds required' }, { status: 400 })
 
     const { data: existing, error } = await supabaseAdmin
-      .from('PlaylistTrack')
-      .select('trackId')
-      .eq('playlistId', playlistId)
+      .from('PlaylistTrack').select('trackId').eq('playlistId', playlistId)
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    const existingTrackIds = (existing ?? []).map((row) => row.trackId)
+    const existingTrackIds = (existing ?? []).map((r) => r.trackId)
     if (existingTrackIds.length !== orderedTrackIds.length) {
       return NextResponse.json({ error: 'orderedTrackIds must include every playlist track exactly once' }, { status: 400 })
     }
-
     const orderedSet = new Set(orderedTrackIds)
-    const matches = existingTrackIds.every((trackId) => orderedSet.has(trackId))
-    if (!matches) {
+    if (!existingTrackIds.every((id) => orderedSet.has(id))) {
       return NextResponse.json({ error: 'orderedTrackIds must include every playlist track exactly once' }, { status: 400 })
     }
 
     for (const [index, trackId] of orderedTrackIds.entries()) {
-      const { error: updateError } = await supabaseAdmin
-        .from('PlaylistTrack')
-        .update({ order: index })
-        .eq('playlistId', playlistId)
-        .eq('trackId', trackId)
-
-      if (updateError) {
-        return NextResponse.json({ error: updateError.message }, { status: 500 })
-      }
+      const { error: e } = await supabaseAdmin
+        .from('PlaylistTrack').update({ order: index }).eq('playlistId', playlistId).eq('trackId', trackId)
+      if (e) return NextResponse.json({ error: e.message }, { status: 500 })
     }
 
     return NextResponse.json({ ok: true, action: 'reordered' })
