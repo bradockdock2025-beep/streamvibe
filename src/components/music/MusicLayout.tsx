@@ -38,8 +38,14 @@ export default function MusicLayout() {
   })))
 
   const isMobile = useMobile()
-  const [searchOpen, setSearchOpen]         = useState(false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try { return localStorage.getItem('music:sidebarCollapsed') === '1' } catch { return false }
+  })
+
+  useEffect(() => {
+    try { localStorage.setItem('music:sidebarCollapsed', sidebarCollapsed ? '1' : '0') } catch { /* noop */ }
+  }, [sidebarCollapsed])
 
   useEffect(() => {
     fetchAlbums()
