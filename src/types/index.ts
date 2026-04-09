@@ -70,7 +70,7 @@ export interface UploadFile {
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 export type AppPage      = 'auth' | 'hub' | 'app' | 'admin'
-export type AdminSection = 'dashboard' | 'content' | 'users'
+export type AdminSection = 'dashboard' | 'streams' | 'users' | 'content'
 export type MpView    = 'library' | 'playlists' | 'artists' | 'songs' | 'popular' | 'radio' | 'upload' | 'analytics'
 
 // ─── API response shapes ──────────────────────────────────────────────────────

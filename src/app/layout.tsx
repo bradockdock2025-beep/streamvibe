@@ -17,7 +17,7 @@ const spaceMono = Space_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'VIBESTREAM — Seu espaço pessoal de conteúdo',
+  title: 'podfeplay — Seu espaço pessoal de conteúdo',
   description: 'Organize vídeos e músicas num único lugar.',
 }
 

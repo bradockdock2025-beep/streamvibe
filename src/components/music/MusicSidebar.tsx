@@ -23,67 +23,144 @@ const ADMIN_ITEMS: NavItemDef[] = [
   { view: 'upload', label: 'Upload', icon: <UploadIcon />, activeKey: 'upload' },
 ]
 
-function getActiveKey(mpView: MpView, artistName: string | null, albumId: string | null, playlistId: string | null): string {
-  if (artistName) return 'artists'
-  if (playlistId) return 'playlists'
-  if (albumId)    return 'library'
+function getActiveKey(
+  mpView: MpView,
+  artistName: string | null,
+  albumId: string | null,
+  playlistId: string | null,
+): string {
+  if (artistName)  return 'artists'
+  if (playlistId)  return 'playlists'
+  if (albumId)     return 'library'
   if (mpView === 'popular' || mpView === 'radio') return 'library'
   return mpView
 }
 
-export default function MusicSidebar() {
-  const { mpView, mpCurrentArtistName, mpCurrentAlbumId, mpCurrentPlaylistId, mpSetView, user, userRole, signOut } = useAppStore(useShallow((s) => ({
-    mpView: s.mpView,
-    mpCurrentArtistName: s.mpCurrentArtistName,
-    mpCurrentAlbumId: s.mpCurrentAlbumId,
-    mpCurrentPlaylistId: s.mpCurrentPlaylistId,
-    mpSetView: s.mpSetView,
-    user: s.user,
-    userRole: s.userRole,
-    signOut: s.signOut,
+interface Props {
+  collapsed: boolean
+  onToggle: () => void
+}
+
+export default function MusicSidebar({ collapsed, onToggle }: Props) {
+  const {
+    mpView, mpCurrentArtistName, mpCurrentAlbumId, mpCurrentPlaylistId,
+    mpSetView, user, userRole, signOut,
+  } = useAppStore(useShallow((s) => ({
+    mpView:               s.mpView,
+    mpCurrentArtistName:  s.mpCurrentArtistName,
+    mpCurrentAlbumId:     s.mpCurrentAlbumId,
+    mpCurrentPlaylistId:  s.mpCurrentPlaylistId,
+    mpSetView:            s.mpSetView,
+    user:                 s.user,
+    userRole:             s.userRole,
+    signOut:              s.signOut,
   })))
 
   const activeKey = getActiveKey(mpView, mpCurrentArtistName, mpCurrentAlbumId, mpCurrentPlaylistId)
+  const W = collapsed ? 56 : 180
 
   return (
     <aside style={{
-      width: 180, minWidth: 180,
+      width: W, minWidth: W,
       background: '#141418',
       borderRight: '1px solid rgba(255,255,255,.05)',
       display: 'flex', flexDirection: 'column',
-      padding: '22px 0',
+      padding: collapsed ? '22px 0' : '22px 0',
       overflowY: 'auto', overflowX: 'hidden',
+      transition: 'width .2s ease, min-width .2s ease',
+      position: 'relative',
     }}>
-      <NavGroup label="Library">
+
+      {/* ── Nav group ── */}
+      <div style={{ flex: 1 }}>
+        {!collapsed && (
+          <div style={{
+            fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,.28)',
+            letterSpacing: '1.1px', textTransform: 'uppercase',
+            padding: '0 20px', marginBottom: 4,
+          }}>
+            Library
+          </div>
+        )}
+
         {LIBRARY_ITEMS.map((item) => (
           <NavItem
             key={item.activeKey}
             item={item}
             active={activeKey === item.activeKey}
+            collapsed={collapsed}
             onClick={() => mpSetView(item.view)}
           />
         ))}
+
         {userRole === 'admin' && ADMIN_ITEMS.map((item) => (
           <NavItem
             key={item.activeKey}
             item={item}
             active={activeKey === item.activeKey}
+            collapsed={collapsed}
             onClick={() => mpSetView(item.view)}
           />
         ))}
-      </NavGroup>
+      </div>
+
+      {/* ── Toggle button ── */}
+      <div style={{
+        display: 'flex',
+        justifyContent: collapsed ? 'center' : 'flex-end',
+        padding: collapsed ? '8px 0' : '8px 12px',
+        borderTop: '1px solid rgba(255,255,255,.05)',
+        borderBottom: '1px solid rgba(255,255,255,.05)',
+      }}>
+        <button
+          onClick={onToggle}
+          title={collapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}
+          style={{
+            width: 26, height: 26, borderRadius: 6,
+            background: 'rgba(255,255,255,.05)',
+            border: '1px solid rgba(255,255,255,.07)',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: 'rgba(255,255,255,.35)', transition: 'background .15s, color .15s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(255,255,255,.1)'
+            e.currentTarget.style.color = 'rgba(255,255,255,.8)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(255,255,255,.05)'
+            e.currentTarget.style.color = 'rgba(255,255,255,.35)'
+          }}
+        >
+          {collapsed
+            ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+            : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+          }
+        </button>
+      </div>
 
       {/* ── User + Sign Out ── */}
-      <div style={{ marginTop: 'auto', padding: '16px 20px', borderTop: '1px solid rgba(255,255,255,.05)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 12 }}>
-          <div style={{
+      <div style={{
+        padding: collapsed ? '14px 0' : '16px 20px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: collapsed ? 'center' : 'stretch',
+        gap: collapsed ? 10 : 12,
+      }}>
+        {/* Avatar */}
+        <div
+          title={collapsed ? `${user.name} · ${user.email}` : undefined}
+          style={{
             width: 28, height: 28, borderRadius: '50%',
             background: 'linear-gradient(135deg, #6c5ce7, #1db954)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0,
-          }}>
-            {user.initials}
-          </div>
+            cursor: collapsed ? 'default' : 'auto',
+          }}
+        >
+          {user.initials}
+        </div>
+
+        {!collapsed && (
           <div style={{ overflow: 'hidden' }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,.85)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {user.name}
@@ -92,67 +169,80 @@ export default function MusicSidebar() {
               {user.email}
             </div>
           </div>
-        </div>
+        )}
+
+        {/* Sign out */}
         <button
           onClick={() => signOut()}
+          title={collapsed ? 'Sair' : undefined}
           style={{
-            width: '100%', display: 'flex', alignItems: 'center', gap: 7,
+            display: 'flex', alignItems: 'center',
+            justifyContent: collapsed ? 'center' : 'flex-start',
+            gap: 7,
             background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.07)',
-            borderRadius: 7, padding: '7px 10px', cursor: 'pointer',
+            borderRadius: 7,
+            padding: collapsed ? '7px' : '7px 10px',
+            cursor: 'pointer',
             color: 'rgba(255,255,255,.4)', fontSize: 12, fontFamily: 'inherit',
             transition: 'color .15s, background .15s',
+            width: collapsed ? 32 : '100%',
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = '#e05252'; e.currentTarget.style.background = 'rgba(224,82,82,.08)' }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(255,255,255,.4)'; e.currentTarget.style.background = 'rgba(255,255,255,.04)' }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = '#e05252'
+            e.currentTarget.style.background = 'rgba(224,82,82,.08)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = 'rgba(255,255,255,.4)'
+            e.currentTarget.style.background = 'rgba(255,255,255,.04)'
+          }}
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
             <polyline points="16 17 21 12 16 7"/>
             <line x1="21" y1="12" x2="9" y2="12"/>
           </svg>
-          Sign out
+          {!collapsed && 'Sign out'}
         </button>
       </div>
     </aside>
   )
 }
 
-function NavGroup({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ marginBottom: 24 }}>
-      <div style={{
-        fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,.28)',
-        letterSpacing: '1.1px', textTransform: 'uppercase',
-        padding: '0 20px', marginBottom: 4,
-      }}>
-        {label}
-      </div>
-      {children}
-    </div>
-  )
-}
+// ─── Nav Item ─────────────────────────────────────────────────────────────────
 
-function NavItem({ item, active, onClick }: { item: NavItemDef; active: boolean; onClick: () => void }) {
+function NavItem({
+  item, active, collapsed, onClick,
+}: {
+  item: NavItemDef; active: boolean; collapsed: boolean; onClick: () => void
+}) {
   return (
     <button
       onClick={onClick}
+      title={collapsed ? item.label : undefined}
       style={{
-        width: '100%', display: 'flex', alignItems: 'center', gap: 11,
-        padding: '8px 20px', background: active ? 'rgba(255,255,255,.05)' : 'none',
+        width: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: collapsed ? 'center' : 'flex-start',
+        gap: collapsed ? 0 : 11,
+        padding: collapsed ? '9px 0' : '8px 20px',
+        background: active ? 'rgba(255,255,255,.05)' : 'none',
         border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
         color: active ? '#1db954' : 'rgba(255,255,255,.52)',
         fontSize: 13, fontWeight: active ? 500 : 400,
         transition: 'color .15s, background .15s',
-        borderLeft: active ? '2px solid #1db954' : '2px solid transparent',
+        borderLeft: !collapsed && active ? '2px solid #1db954' : '2px solid transparent',
       }}
       onMouseEnter={(e) => !active && (e.currentTarget.style.color = 'rgba(255,255,255,.88)')}
       onMouseLeave={(e) => !active && (e.currentTarget.style.color = 'rgba(255,255,255,.52)')}
     >
       <span style={{ flexShrink: 0, opacity: active ? 1 : 0.7, display: 'flex' }}>{item.icon}</span>
-      {item.label}
+      {!collapsed && item.label}
     </button>
   )
 }
+
+// ─── Icons ────────────────────────────────────────────────────────────────────
 
 function PlaylistIcon() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>

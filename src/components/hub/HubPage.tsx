@@ -36,7 +36,7 @@ export default function HubPage() {
         transition={{ delay: 0.05 }}
         style={{ fontFamily: 'var(--font-space-mono, monospace)', fontSize: 22, letterSpacing: -1, marginBottom: 6 }}
       >
-        VIBE<b style={{ color: 'var(--ach)' }}>STREAM</b>
+        podfe<b style={{ color: 'var(--ach)' }}>play</b>
       </motion.div>
       <motion.p
         initial={{ opacity: 0 }}

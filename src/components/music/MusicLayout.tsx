@@ -38,7 +38,8 @@ export default function MusicLayout() {
   })))
 
   const isMobile = useMobile()
-  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchOpen, setSearchOpen]         = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   useEffect(() => {
     fetchAlbums()
@@ -101,7 +102,12 @@ export default function MusicLayout() {
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#1a1a1f', position: 'relative' }}>
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Sidebar — desktop only */}
-        {!isMobile && <MusicSidebar />}
+        {!isMobile && (
+          <MusicSidebar
+            collapsed={sidebarCollapsed}
+            onToggle={() => setSidebarCollapsed((c) => !c)}
+          />
+        )}
 
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
           {/* ── Topbar ── */}
