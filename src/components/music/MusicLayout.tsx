@@ -155,6 +155,30 @@ export default function MusicLayout() {
 
             {/* Right side */}
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+              {userRole === 'admin' && (
+                <button
+                  type="button"
+                  onClick={() => useAppStore.getState().openAdminModule()}
+                  title="Painel administrativo"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '6px 11px',
+                    borderRadius: 999,
+                    border: '1px solid rgba(108, 92, 231, 0.35)',
+                    background: 'rgba(108, 92, 231, 0.12)',
+                    color: 'var(--ach)',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    fontFamily: 'inherit',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                  }}
+                >
+                  Admin
+                </button>
+              )}
               {/* Mobile search icon */}
               {isMobile && (
                 <button

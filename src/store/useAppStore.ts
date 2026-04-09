@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AppPage, MpView, Album, Track, Artist, Playlist, UploadFile } from '@/types'
+import type { AppPage, MpView, AdminSection, Album, Track, Artist, Playlist, UploadFile } from '@/types'
 import type { ApiAlbum, ApiArtist, ApiTrack, ApiPlaylist } from '@/types'
 import { adminHeaders, uid } from '@/lib/utils'
 import { audioManager } from '@/lib/audioManager'
@@ -139,6 +139,7 @@ interface User { name: string; email: string; initials: string }
 interface AppState {
   // Navigation
   page: AppPage
+  adminSection: AdminSection
   user: User
   userRole: UserRole
 
@@ -188,9 +189,11 @@ interface AppState {
   setUser:      (u: User) => void
   setUserRole:  (role: UserRole) => void
   goAuth:       () => void
-  goHub:        () => void
-  openMusicApp: () => void
-  signOut:      () => Promise<void>
+  goHub:           () => void
+  openMusicApp:    () => void
+  openAdminModule: () => void
+  setAdminSection: (s: AdminSection) => void
+  signOut:         () => Promise<void>
 
   // ── Actions — Toast ─────────────────────────────────────────────────────────
   showToast: (msg: string) => void
@@ -456,6 +459,7 @@ export const useAppStore = create<AppState>((set, get) => {
   return {
   // ── App ──
   page:             'auth',
+  adminSection:     'dashboard' as AdminSection,
   user:             { name: 'Usuário', email: 'usuario@exemplo.com', initials: 'US' },
   userRole:         'listener' as UserRole,
   toastMsg:         '',
@@ -498,6 +502,16 @@ export const useAppStore = create<AppState>((set, get) => {
   setUserRole: (role) => set({ userRole: role }),
   goAuth: () => set({ page: 'auth' }),
   goHub:  () => set({ page: 'hub' }),
+
+  setAdminSection: (section) => set({ adminSection: section }),
+
+  openAdminModule: () => {
+    if (get().userRole !== 'admin') return
+    set({ page: 'admin', adminSection: 'dashboard' })
+    if (!get().albums.length) get().fetchAlbums()
+    if (!get().artists.length) get().fetchArtists()
+    if (!get().playlists.length) get().fetchPlaylists()
+  },
 
   signOut: async () => {
     audioManager.stop()

@@ -6,11 +6,15 @@ import { useAppStore } from '@/store/useAppStore'
 import { supabase } from '@/lib/supabase'
 
 export default function HubPage() {
-  const { user, openMusicApp, goAuth } = useAppStore(useShallow((s) => ({
+  const { user, userRole, openMusicApp, openAdminModule, goAuth } = useAppStore(useShallow((s) => ({
     user: s.user,
+    userRole: s.userRole,
     openMusicApp: s.openMusicApp,
+    openAdminModule: s.openAdminModule,
     goAuth: s.goAuth,
   })))
+
+  const isAdmin = userRole === 'admin'
 
   async function handleSignOut() {
     await supabase.auth.signOut()
@@ -40,7 +44,7 @@ export default function HubPage() {
         transition={{ delay: 0.1 }}
         style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 28 }}
       >
-        Abra o módulo de música
+        {isAdmin ? 'Escolha um módulo' : 'Abra o módulo de música'}
       </motion.p>
 
       {/* User row */}
@@ -61,15 +65,26 @@ export default function HubPage() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.15 }}
-        style={{ width: '100%', maxWidth: 320 }}
+        style={{ width: '100%', maxWidth: 320, display: 'flex', flexDirection: 'column', gap: isAdmin ? 12 : 0 }}
       >
         <HubCard
           title="Music Player"
           description="Faz upload de músicas e álbuns, organiza a tua biblioteca pessoal"
           icon={<MusicIcon />}
           badge="Novo"
+          accent="teal"
           onClick={openMusicApp}
         />
+        {isAdmin && (
+          <HubCard
+            title="Administrativo"
+            description="Dashboard, conteúdo e utilizadores"
+            icon={<AdminIcon />}
+            badge="Admin"
+            accent="violet"
+            onClick={openAdminModule}
+          />
+        )}
       </motion.div>
 
       {/* Bottom */}
@@ -98,13 +113,20 @@ interface HubCardProps {
   description: string
   icon: React.ReactNode
   badge?: string
+  accent?: 'teal' | 'violet'
   onClick: () => void
 }
 
-function HubCard({ title, description, icon, badge, onClick }: HubCardProps) {
+function HubCard({ title, description, icon, badge, accent = 'teal', onClick }: HubCardProps) {
+  const hoverBorder = accent === 'violet' ? 'var(--ac)' : 'var(--teal)'
+  const iconBg = accent === 'violet' ? 'var(--acd)' : 'var(--teald)'
+  const iconColor = accent === 'violet' ? 'var(--ach)' : 'var(--teal)'
+  const badgeBg = accent === 'violet' ? 'var(--acd)' : 'var(--teald)'
+  const badgeColor = accent === 'violet' ? 'var(--ach)' : 'var(--teal)'
+
   return (
     <motion.div
-      whileHover={{ y: -2, borderColor: 'var(--teal)' }}
+      whileHover={{ y: -2, borderColor: hoverBorder }}
       onClick={onClick}
       style={{
         background: 'var(--bg2)',
@@ -118,13 +140,13 @@ function HubCard({ title, description, icon, badge, onClick }: HubCardProps) {
       }}
     >
       {/* Icon */}
-      <div style={{ width: 40, height: 40, borderRadius: 8, background: 'var(--teald)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
-        <div style={{ color: 'var(--teal)' }}>{icon}</div>
+      <div style={{ width: 40, height: 40, borderRadius: 8, background: iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+        <div style={{ color: iconColor }}>{icon}</div>
       </div>
 
       {/* Badge */}
       {badge && (
-        <span style={{ position: 'absolute', top: 14, right: 14, fontSize: 9, fontWeight: 500, padding: '2px 7px', borderRadius: 99, letterSpacing: '.4px', background: 'var(--teald)', color: 'var(--teal)' }}>
+        <span style={{ position: 'absolute', top: 14, right: 14, fontSize: 9, fontWeight: 500, padding: '2px 7px', borderRadius: 99, letterSpacing: '.4px', background: badgeBg, color: badgeColor }}>
           {badge}
         </span>
       )}
@@ -140,6 +162,17 @@ function MusicIcon() {
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="2"/>
       <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+    </svg>
+  )
+}
+
+function AdminIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="9" rx="1" />
+      <rect x="14" y="3" width="7" height="5" rx="1" />
+      <rect x="14" y="12" width="7" height="9" rx="1" />
+      <rect x="3" y="16" width="7" height="5" rx="1" />
     </svg>
   )
 }

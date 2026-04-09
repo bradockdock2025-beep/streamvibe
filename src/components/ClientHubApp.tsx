@@ -36,7 +36,7 @@ export default function ClientHubApp({ initialAlbums = [], initialArtists = [] }
      * Using both causes a race condition.
      */
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      const { setUser, openMusicApp, goAuth } = useAppStore.getState()
+      const { setUser, openMusicApp, goHub, goAuth } = useAppStore.getState()
 
       if (session?.user) {
         // Store JWT in memory — used by adminHeaders() for API calls
@@ -54,7 +54,8 @@ export default function ClientHubApp({ initialAlbums = [], initialArtists = [] }
         // Only navigate to app on initial load or explicit sign-in
         // Avoid re-navigating on TOKEN_REFRESHED (would reset view state)
         if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
-          openMusicApp()
+          if (role === 'admin') goHub()
+          else openMusicApp()
         }
       } else if (event === 'INITIAL_SESSION') {
         // No session on load — stay on auth page
