@@ -33,7 +33,20 @@ interface AlbumMeta {
   coverFile: File | null
 }
 
-const GENRES     = ['Pop','Hip-Hop','R&B','Rock','Electronic','Jazz','Classical','Alternative','Indie','Soul','Funk','Latin','Other']
+const GENRES = [
+  // Gospel & Cristão
+  'Gospel', 'Worship', 'Praise', 'Contemporary Christian', 'Christian Hip-Hop', 'Hymns',
+  // Podcast
+  'Podcast: Testemunhos', 'Podcast: Pregações', 'Podcast: Estudos Bíblicos',
+  'Podcast: Missão', 'Podcast: Fé', 'Podcast: Espiritualidade',
+  'Podcast: Saúde', 'Podcast: Sociedade', 'Podcast: Negócios', 'Podcast: Tecnologia',
+  // Música
+  'R&B', 'Pop', 'Hip-Hop', 'Soul', 'Funk', 'Jazz', 'Blues', 'Rock', 'Metal',
+  'Alternative', 'Indie', 'Electronic', 'Dance', 'Classical', 'Country', 'Folk',
+  'Reggae', 'Afrobeats', 'Latin', 'K-Pop',
+  // Outros
+  'Other',
+]
 const AUDIO_EXTS = ['.mp3','.flac','.wav','.m4a','.ogg','.aac']
 
 function uid() { return Math.random().toString(36).slice(2) }

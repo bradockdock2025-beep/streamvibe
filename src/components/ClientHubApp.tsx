@@ -58,11 +58,12 @@ export default function ClientHubApp({ initialAlbums = [], initialArtists = [] }
           else openMusicApp()
         }
       } else if (event === 'INITIAL_SESSION') {
-        // No session on load — stay on auth page
+        // No session on load — show landing page
         clearAuthToken()
+        useAppStore.getState().goLanding()
       } else if (event === 'SIGNED_OUT') {
         clearAuthToken()
-        goAuth()
+        useAppStore.getState().goLanding()
       }
 
       // Mark ready after first event fires (INITIAL_SESSION always fires first)

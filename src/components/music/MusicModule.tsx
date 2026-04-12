@@ -36,6 +36,7 @@ export default function MusicModule() {
     mpCurrentAlbumId,
     mpCurrentArtistName,
     mpCurrentPlaylistId,
+    mpCurrentGenre,
     albums,
     playlists,
     createPlaylist,
@@ -47,6 +48,7 @@ export default function MusicModule() {
     mpCurrentAlbumId: s.mpCurrentAlbumId,
     mpCurrentArtistName: s.mpCurrentArtistName,
     mpCurrentPlaylistId: s.mpCurrentPlaylistId,
+    mpCurrentGenre: s.mpCurrentGenre,
     albums: s.albums,
     playlists: s.playlists,
     createPlaylist: s.createPlaylist,
@@ -131,6 +133,8 @@ export default function MusicModule() {
         {mpView === 'songs'     && <SongsView key="songs" onRequestDelete={setDeleteDialog} onOpenTrackPlaylist={setPlaylistPicker} />}
         {mpView === 'upload'    && <UploadView key="upload" />}
         {mpView === 'analytics' && <AnalyticsView key="analytics" />}
+        {mpView === 'genres' && !mpCurrentGenre && <GenresView key="genres" />}
+        {mpView === 'genres' && mpCurrentGenre  && <GenreDetailView key={`genre-${mpCurrentGenre}`} genre={mpCurrentGenre} onRequestDelete={setDeleteDialog} />}
         {(mpView === 'library' || mpView === 'radio' || mpView === 'popular') &&
           <LibraryView key="library" onRequestDelete={setDeleteDialog} />}
       </AnimatePresence>
@@ -1230,5 +1234,245 @@ function SectionHeader({ title }: { title: string }) {
         onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(255,255,255,.32)')}
       >See more</button>
     </div>
+  )
+}
+
+// ─── Genre helpers ────────────────────────────────────────────────────────────
+// Consistent color palette for genre cards (Spotify-style)
+const GENRE_GRADIENTS = [
+  ['#1e3a5f', '#2980b9'],  // Deep Blue
+  ['#4a1942', '#8e44ad'],  // Purple
+  ['#1a3a2a', '#27ae60'],  // Green
+  ['#3d1a00', '#e67e22'],  // Orange
+  ['#3b0000', '#c0392b'],  // Red
+  ['#1a2a3a', '#2c3e50'],  // Dark Slate
+  ['#2d1b4e', '#6c5ce7'],  // Violet
+  ['#003333', '#1abc9c'],  // Teal
+  ['#4a3000', '#f39c12'],  // Gold
+  ['#1a0033', '#9b59b6'],  // Indigo
+  ['#003d1a', '#16a085'],  // Emerald
+  ['#3d0033', '#e91e8c'],  // Pink
+]
+
+function genreGradient(genre: string): [string, string] {
+  // Deterministic color from genre name so it's always consistent
+  const hash = genre.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)
+  return GENRE_GRADIENTS[hash % GENRE_GRADIENTS.length] as [string, string]
+}
+
+interface GenreInfo {
+  name:       string
+  albumCount: number
+  trackCount: number
+  covers:     string[]  // up to 4 album covers for visual
+}
+
+function deriveGenres(albums: Album[]): GenreInfo[] {
+  const map = new Map<string, GenreInfo>()
+  for (const album of albums) {
+    const key = (album.genre || 'Other').trim()
+    const existing = map.get(key)
+    if (existing) {
+      existing.albumCount++
+      existing.trackCount += album.tracks.length
+      if (existing.covers.length < 4 && album.cover) existing.covers.push(album.cover)
+    } else {
+      map.set(key, {
+        name:       key,
+        albumCount: 1,
+        trackCount: album.tracks.length,
+        covers:     album.cover ? [album.cover] : [],
+      })
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => b.albumCount - a.albumCount)
+}
+
+// ─── 7. Genres grid view ──────────────────────────────────────────────────────
+function GenresView() {
+  const { albums, albumsLoading, mpOpenGenre } = useAppStore(useShallow((s) => ({
+    albums:        s.albums,
+    albumsLoading: s.albumsLoading,
+    mpOpenGenre:   s.mpOpenGenre,
+  })))
+  const isMobile = useMobile()
+  const genres = deriveGenres(albums)
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18 }}
+      style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '20px 14px 24px' : '36px 32px 32px' }}
+    >
+      <h1 style={{ fontSize: isMobile ? 24 : 32, fontWeight: 800, color: '#fff', marginBottom: 6, letterSpacing: '-.6px' }}>
+        Genres
+        {albumsLoading && <span style={{ fontSize: 13, fontWeight: 400, color: 'rgba(255,255,255,.3)', marginLeft: 12 }}>Loading…</span>}
+      </h1>
+      <p style={{ fontSize: 13, color: 'rgba(255,255,255,.4)', marginBottom: 32 }}>
+        {genres.length} {genres.length === 1 ? 'genre' : 'genres'} across {albums.length} {albums.length === 1 ? 'album' : 'albums'}
+      </p>
+
+      {genres.length === 0 && !albumsLoading && (
+        <div style={{ textAlign: 'center', paddingTop: 80, color: 'rgba(255,255,255,.25)' }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🎙️</div>
+          <p style={{ fontSize: 15, fontWeight: 500 }}>No genres yet</p>
+          <p style={{ fontSize: 13, marginTop: 6 }}>Upload content to see genres appear here</p>
+        </div>
+      )}
+
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile
+          ? 'repeat(2, 1fr)'
+          : 'repeat(auto-fill, minmax(180px, 1fr))',
+        gap: isMobile ? 12 : 16,
+      }}>
+        {genres.map((genre, i) => {
+          const [from, to] = genreGradient(genre.name)
+          return (
+            <motion.div
+              key={genre.name}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.18, delay: Math.min(i * 0.03, 0.3) }}
+              onClick={() => mpOpenGenre(genre.name)}
+              whileHover={{ scale: 1.03, y: -2 }}
+              whileTap={{ scale: 0.97 }}
+              style={{
+                position: 'relative', overflow: 'hidden', borderRadius: 12,
+                height: isMobile ? 100 : 120,
+                background: `linear-gradient(135deg, ${from} 0%, ${to} 100%)`,
+                cursor: 'pointer',
+                boxShadow: '0 4px 24px rgba(0,0,0,0.35)',
+              }}
+            >
+              {/* Background cover mosaic (subtle) */}
+              {genre.covers[0] && (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={genre.covers[0]}
+                  alt=""
+                  style={{
+                    position: 'absolute', right: -10, bottom: -10,
+                    width: 72, height: 72, objectFit: 'cover',
+                    borderRadius: 6, opacity: 0.28,
+                    transform: 'rotate(18deg)',
+                    pointerEvents: 'none',
+                  }}
+                />
+              )}
+              {/* Content */}
+              <div style={{ position: 'relative', padding: '16px 16px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+                <p style={{ fontSize: isMobile ? 15 : 17, fontWeight: 800, color: '#fff', margin: 0, letterSpacing: '-0.3px', textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
+                  {genre.name}
+                </p>
+                <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', margin: '3px 0 0', fontWeight: 500 }}>
+                  {genre.albumCount} {genre.albumCount === 1 ? 'album' : 'albums'} · {genre.trackCount} {genre.trackCount === 1 ? 'track' : 'tracks'}
+                </p>
+              </div>
+            </motion.div>
+          )
+        })}
+      </div>
+    </motion.div>
+  )
+}
+
+// ─── 8. Genre detail view ─────────────────────────────────────────────────────
+function GenreDetailView({
+  genre,
+  onRequestDelete,
+}: {
+  genre: string
+  onRequestDelete: (dialog: DeleteDialogState) => void
+}) {
+  const { albums, deleteAlbum, userRole, mpBackToLibrary } = useAppStore(useShallow((s) => ({
+    albums:        s.albums,
+    deleteAlbum:   s.deleteAlbum,
+    userRole:      s.userRole,
+    mpBackToLibrary: s.mpBackToLibrary,
+  })))
+  const isMobile = useMobile()
+  const isAdmin  = userRole === 'admin'
+  const cardSize = isMobile ? 140 : 158
+
+  const filtered = albums.filter((a) => (a.genre || 'Other').trim() === genre)
+  const [from, to] = genreGradient(genre)
+
+  const { visibleCount, hasMore, loading, sentinelRef } = useInfiniteScroll({
+    pageSize: 24,
+    total: filtered.length,
+  })
+  const visible = filtered.slice(0, visibleCount)
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18 }}
+      style={{ flex: 1, overflowY: 'auto' }}
+    >
+      {/* Header banner */}
+      <div style={{
+        background: `linear-gradient(160deg, ${from} 0%, ${to} 60%, var(--bg2) 100%)`,
+        padding: isMobile ? '48px 16px 28px' : '64px 32px 36px',
+        marginBottom: 0,
+      }}>
+        <button
+          onClick={mpBackToLibrary}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            background: 'rgba(0,0,0,0.25)', border: 'none', borderRadius: 20,
+            padding: '6px 14px 6px 10px', cursor: 'pointer', color: '#fff',
+            fontSize: 13, fontWeight: 500, fontFamily: 'inherit',
+            marginBottom: 20, backdropFilter: 'blur(8px)',
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+          All Genres
+        </button>
+
+        <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.6)', letterSpacing: 3, textTransform: 'uppercase', marginBottom: 8 }}>Genre</p>
+        <h1 style={{ fontSize: isMobile ? 36 : 56, fontWeight: 900, color: '#fff', letterSpacing: '-1.5px', margin: 0, lineHeight: 1 }}>
+          {genre}
+        </h1>
+        <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', marginTop: 12 }}>
+          {filtered.length} {filtered.length === 1 ? 'album' : 'albums'} · {filtered.reduce((s, a) => s + a.tracks.length, 0)} tracks
+        </p>
+      </div>
+
+      {/* Albums grid */}
+      <div style={{ padding: isMobile ? '24px 14px' : '28px 32px' }}>
+        {filtered.length === 0 ? (
+          <div style={{ textAlign: 'center', paddingTop: 60, color: 'rgba(255,255,255,.25)' }}>
+            <p style={{ fontSize: 15, fontWeight: 500 }}>No albums in this genre</p>
+          </div>
+        ) : (
+          <>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(158px, 1fr))',
+              gap: isMobile ? 12 : 20,
+            }}>
+              {visible.map((a) => (
+                <AlbumCard
+                  key={a.id}
+                  album={a}
+                  size={cardSize}
+                  onDelete={isAdmin ? () => onRequestDelete(albumDeleteDialog(a, deleteAlbum)) : undefined}
+                />
+              ))}
+            </div>
+            {hasMore && <div ref={sentinelRef} style={{ height: 1 }} />}
+            {loading && <LoadMoreSpinner />}
+          </>
+        )}
+      </div>
+    </motion.div>
   )
 }

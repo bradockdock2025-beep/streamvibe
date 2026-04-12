@@ -55,3 +55,31 @@ html, body {
   0%, 100% { transform: scaleY(0.3); }
   50%       { transform: scaleY(1);   }
 }
+
+@keyframes gradientShift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(108,92,231,0.35); }
+  50%       { box-shadow: 0 0 40px rgba(108,92,231,0.6); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-10px); }
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--ac), var(--ach), var(--teal));
+  background-size: 200% 200%;
+  animation: gradientShift 4s ease infinite;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.pulse-glow { animation: pulse-glow 2.5s ease-in-out infinite; }
+.float-anim { animation: float 4s ease-in-out infinite; }

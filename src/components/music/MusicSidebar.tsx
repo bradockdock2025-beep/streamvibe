@@ -16,6 +16,7 @@ const LIBRARY_ITEMS: NavItemDef[] = [
   { view: 'artists',    label: 'Artists',   icon: <ArtistIcon />,    activeKey: 'artists'    },
   { view: 'library',    label: 'Albums',    icon: <AlbumIcon />,     activeKey: 'library'    },
   { view: 'songs',      label: 'Songs',     icon: <SongIcon />,      activeKey: 'songs'      },
+  { view: 'genres',     label: 'Genres',    icon: <GenreIcon />,     activeKey: 'genres'     },
   { view: 'analytics',  label: 'Stats',     icon: <AnalyticsIcon />, activeKey: 'analytics'  },
 ]
 
@@ -44,7 +45,7 @@ interface Props {
 export default function MusicSidebar({ collapsed, onToggle }: Props) {
   const {
     mpView, mpCurrentArtistName, mpCurrentAlbumId, mpCurrentPlaylistId,
-    mpSetView, user, userRole, signOut,
+    mpSetView, user, userRole, signOut, goLanding,
   } = useAppStore(useShallow((s) => ({
     mpView:               s.mpView,
     mpCurrentArtistName:  s.mpCurrentArtistName,
@@ -54,6 +55,7 @@ export default function MusicSidebar({ collapsed, onToggle }: Props) {
     user:                 s.user,
     userRole:             s.userRole,
     signOut:              s.signOut,
+    goLanding:            s.goLanding,
   })))
 
   const activeKey = getActiveKey(mpView, mpCurrentArtistName, mpCurrentAlbumId, mpCurrentPlaylistId)
@@ -70,6 +72,35 @@ export default function MusicSidebar({ collapsed, onToggle }: Props) {
       transition: 'width .2s ease, min-width .2s ease',
       position: 'relative',
     }}>
+
+      {/* ── Logo / Voltar à landing ── */}
+      <div
+        onClick={goLanding}
+        title="Voltar ao início"
+        style={{
+          display: 'flex', alignItems: 'center',
+          gap: collapsed ? 0 : 8,
+          justifyContent: collapsed ? 'center' : 'flex-start',
+          padding: collapsed ? '0 0 20px' : '0 20px 20px',
+          cursor: 'pointer',
+        }}
+      >
+        <div style={{
+          width: 26, height: 26, borderRadius: '50%',
+          background: '#ff3b30', flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 12c.5-4.5 2.5-7 4-7s3.5 2.5 4 7-.5 9-2 9-3.5-4.5-4-7M14 12c.5-4.5 2.5-7 4-7s3 2.5 3 7-1.5 9-3 9" />
+          </svg>
+        </div>
+        {!collapsed && (
+          <span style={{
+            fontSize: 15, fontWeight: 800, color: '#fff',
+            letterSpacing: -0.4, fontFamily: 'inherit',
+          }}>PodFé</span>
+        )}
+      </div>
 
       {/* ── Nav group ── */}
       <div style={{ flex: 1 }}>
@@ -261,4 +292,7 @@ function UploadIcon() {
 }
 function AnalyticsIcon() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+}
+function GenreIcon() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/></svg>
 }

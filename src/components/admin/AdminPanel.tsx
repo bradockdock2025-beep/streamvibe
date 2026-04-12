@@ -34,13 +34,14 @@ const SECTION_TITLES: Record<AdminSection, { title: string; sub: string }> = {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AdminPanel() {
-  const { userRole, adminSection, setAdminSection, goHub, openMusicApp, user, signOut } =
+  const { userRole, adminSection, setAdminSection, goHub, openMusicApp, goLanding, user, signOut } =
     useAppStore(useShallow((s) => ({
       userRole:         s.userRole,
       adminSection:     s.adminSection,
       setAdminSection:  s.setAdminSection,
       goHub:            s.goHub,
       openMusicApp:     s.openMusicApp,
+      goLanding:        s.goLanding,
       user:             s.user,
       signOut:          s.signOut,
     })))
@@ -155,11 +156,13 @@ export default function AdminPanel() {
           {/* Quick actions */}
           {!collapsed ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
-              <QuickBtn label="Hub de Módulos" icon={<HubIcon />} onClick={goHub} variant="neutral" />
-              <QuickBtn label="Módulo Música" icon={<MusicNoteIcon />} onClick={openMusicApp} variant="teal" />
+              <QuickBtn label="Início / Landing" icon={<LandingIcon />} onClick={goLanding} variant="red" />
+              <QuickBtn label="Hub de Módulos"   icon={<HubIcon />}     onClick={goHub}      variant="neutral" />
+              <QuickBtn label="Módulo Música"    icon={<MusicNoteIcon />} onClick={openMusicApp} variant="teal" />
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 6 }}>
+              <IconBtn onClick={goLanding} title="Início / Landing" red><LandingIcon /></IconBtn>
               <IconBtn onClick={goHub} title="Hub de Módulos"><HubIcon /></IconBtn>
               <IconBtn onClick={openMusicApp} title="Módulo Música" teal><MusicNoteIcon /></IconBtn>
             </div>
@@ -288,10 +291,13 @@ function NavItem({
 }
 
 function IconBtn({
-  children, onClick, title, teal,
+  children, onClick, title, teal, red,
 }: {
-  children: React.ReactNode; onClick: () => void; title: string; teal?: boolean
+  children: React.ReactNode; onClick: () => void; title: string; teal?: boolean; red?: boolean
 }) {
+  const bg    = red ? 'rgba(255,59,48,.15)'  : teal ? 'var(--teald)' : 'rgba(255,255,255,.04)'
+  const bdr   = red ? '1px solid rgba(255,59,48,.3)' : teal ? '1px solid rgba(29,185,84,.3)' : '1px solid rgba(255,255,255,.07)'
+  const color = red ? '#ff3b30' : teal ? 'var(--teal)' : 'rgba(255,255,255,.45)'
   return (
     <button
       onClick={onClick}
@@ -299,10 +305,7 @@ function IconBtn({
       style={{
         width: 32, height: 32, borderRadius: 7, cursor: 'pointer',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: teal ? 'var(--teald)' : 'rgba(255,255,255,.04)',
-        border: teal ? '1px solid rgba(29,185,84,.3)' : '1px solid rgba(255,255,255,.07)',
-        color: teal ? 'var(--teal)' : 'rgba(255,255,255,.45)',
-        transition: 'opacity .15s',
+        background: bg, border: bdr, color, transition: 'opacity .15s',
       }}
       onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.75' }}
       onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
@@ -315,19 +318,20 @@ function IconBtn({
 function QuickBtn({
   label, icon, onClick, variant,
 }: {
-  label: string; icon: React.ReactNode; onClick: () => void; variant: 'teal' | 'neutral'
+  label: string; icon: React.ReactNode; onClick: () => void; variant: 'teal' | 'neutral' | 'red'
 }) {
+  const isRed  = variant === 'red'
   const isTeal = variant === 'teal'
+  const bg    = isRed ? 'rgba(255,59,48,.12)'  : isTeal ? 'var(--teald)' : 'rgba(255,255,255,.04)'
+  const bdr   = isRed ? '1px solid rgba(255,59,48,.28)' : isTeal ? '1px solid rgba(29,185,84,.3)' : '1px solid rgba(255,255,255,.07)'
+  const color = isRed ? '#ff3b30' : isTeal ? 'var(--teal)' : 'rgba(255,255,255,.45)'
   return (
     <button
       onClick={onClick}
       style={{
         width: '100%', display: 'flex', alignItems: 'center', gap: 7,
         padding: '7px 10px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit',
-        background: isTeal ? 'var(--teald)' : 'rgba(255,255,255,.04)',
-        border: isTeal ? '1px solid rgba(29,185,84,.3)' : '1px solid rgba(255,255,255,.07)',
-        color: isTeal ? 'var(--teal)' : 'rgba(255,255,255,.45)',
-        fontSize: 12, transition: 'opacity .15s',
+        background: bg, border: bdr, color, fontSize: 12, transition: 'opacity .15s',
       }}
       onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.8' }}
       onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
@@ -384,6 +388,14 @@ function MusicNoteIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+    </svg>
+  )
+}
+function LandingIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+      <polyline points="9 22 9 12 15 12 15 22"/>
     </svg>
   )
 }

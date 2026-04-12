@@ -21,6 +21,7 @@ const RESEND_CD  = 60  // seconds
 export default function AuthPage() {
   const setUser      = useAppStore((s) => s.setUser)
   const openMusicApp = useAppStore((s) => s.openMusicApp)
+  const goLanding    = useAppStore((s) => s.goLanding)
 
   const [mode,      setMode]      = useState<Mode>('login')
   const [step,      setStep]      = useState<Step>('email')
@@ -152,9 +153,9 @@ export default function AuthPage() {
             exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.22, ease: 'easeOut' }}
             style={{ width: '100%', maxWidth: 440, display: 'flex', flexDirection: 'column', alignItems: 'center' }}
           >
-            {/* Back */}
+            {/* Back → Landing */}
             <button
-              onClick={() => switchMode(mode === 'login' ? 'login' : 'login')}
+              onClick={goLanding}
               style={{ alignSelf: 'flex-start', background: 'none', border: 'none', cursor: 'pointer', color: T2, fontSize: 15, display: 'flex', alignItems: 'center', gap: 5, padding: 0, marginBottom: 28, fontWeight: 500 }}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" style={{ pointerEvents: 'none' }}><polyline points="15 18 9 12 15 6"/></svg>

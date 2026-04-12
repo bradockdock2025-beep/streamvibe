@@ -155,6 +155,7 @@ interface AppState {
   mpCurrentAlbumId:     string | null
   mpCurrentArtistName:  string | null
   mpCurrentPlaylistId:  string | null
+  mpCurrentGenre:       string | null
   albums:               Album[]
   artists:              Artist[]
   playlists:            Playlist[]
@@ -188,6 +189,7 @@ interface AppState {
   // ── Actions — Navigation ────────────────────────────────────────────────────
   setUser:      (u: User) => void
   setUserRole:  (role: UserRole) => void
+  goLanding:    () => void
   goAuth:       () => void
   goHub:           () => void
   openMusicApp:    () => void
@@ -213,6 +215,7 @@ interface AppState {
   mpOpenAlbum:    (id: string) => void
   mpOpenArtist:   (name: string) => void
   mpOpenPlaylist: (id: string) => void
+  mpOpenGenre:    (genre: string) => void
   mpBackToLibrary:() => void
 
   // ── Actions — Playback ──────────────────────────────────────────────────────
@@ -458,7 +461,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
   return {
   // ── App ──
-  page:             'auth',
+  page:             'landing',
   adminSection:     'dashboard' as AdminSection,
   user:             { name: 'Usuário', email: 'usuario@exemplo.com', initials: 'US' },
   userRole:         'listener' as UserRole,
@@ -471,6 +474,7 @@ export const useAppStore = create<AppState>((set, get) => {
   mpCurrentAlbumId:    null,
   mpCurrentArtistName: null,
   mpCurrentPlaylistId: null,
+  mpCurrentGenre:      null,
   albums:           [],
   artists:          [],
   playlists:        [],
@@ -500,6 +504,7 @@ export const useAppStore = create<AppState>((set, get) => {
   // ── Navigation ──
   setUser:     (u)    => set({ user: u }),
   setUserRole: (role) => set({ userRole: role }),
+  goLanding: () => set({ page: 'landing' }),
   goAuth: () => set({ page: 'auth' }),
   goHub:  () => set({ page: 'hub' }),
 
@@ -607,11 +612,12 @@ export const useAppStore = create<AppState>((set, get) => {
   },
 
   // ── Music navigation ──
-  mpSetView:       (v) => set({ mpView: v, mpCurrentAlbumId: null, mpCurrentArtistName: null, mpCurrentPlaylistId: null }),
+  mpSetView:       (v) => set({ mpView: v, mpCurrentAlbumId: null, mpCurrentArtistName: null, mpCurrentPlaylistId: null, mpCurrentGenre: null }),
   mpOpenAlbum:     (id)   => set({ mpCurrentAlbumId: id, mpCurrentArtistName: null, mpCurrentPlaylistId: null }),
   mpOpenArtist:    (name) => set({ mpCurrentArtistName: name, mpCurrentAlbumId: null, mpCurrentPlaylistId: null }),
   mpOpenPlaylist:  (id)   => set({ mpCurrentPlaylistId: id, mpCurrentAlbumId: null, mpCurrentArtistName: null, mpView: 'playlists' }),
-  mpBackToLibrary: () => set({ mpCurrentAlbumId: null, mpCurrentArtistName: null, mpCurrentPlaylistId: null }),
+  mpOpenGenre:     (genre) => set({ mpCurrentGenre: genre, mpCurrentAlbumId: null, mpCurrentArtistName: null, mpCurrentPlaylistId: null, mpView: 'genres' }),
+  mpBackToLibrary: () => set({ mpCurrentAlbumId: null, mpCurrentArtistName: null, mpCurrentPlaylistId: null, mpCurrentGenre: null }),
 
   // ── Playback ──
   mpPlayAlbum: (albumId) => {
